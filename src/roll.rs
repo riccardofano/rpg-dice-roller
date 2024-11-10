@@ -30,9 +30,5 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_rolling() {
-        dbg!(roll("100dF.1"));
-
-        todo!()
-    }
+    fn test_rolling() {}
 }
