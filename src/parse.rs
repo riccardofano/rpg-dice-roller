@@ -148,6 +148,9 @@ fn modifier(input: &mut &str) -> PResult<Modifier> {
         preceded('d', cut_err(non_zero_start_number)).map(|n| Modifier::Drop(KeepKind::Lowest, n)),
         preceded("cs", opt(compare_point)).map(Modifier::CriticalSuccess),
         preceded("cf", opt(compare_point)).map(Modifier::CriticalFailure),
+        "sa".map(|_| Modifier::Sort(SortKind::Ascending)),
+        "sd".map(|_| Modifier::Sort(SortKind::Descending)),
+        's'.map(|_| Modifier::Sort(SortKind::Ascending)),
     ))
     .parse_next(input)
 }
@@ -176,7 +179,7 @@ mod tests {
 
     use crate::parse::Modifier;
 
-    use super::{modifier, Dice, DieKind, ExplodingKind, KeepKind};
+    use super::{modifier, Dice, DieKind, ExplodingKind, KeepKind, SortKind};
 
     #[test]
     fn test_one_standard_d6() {
@@ -369,5 +372,23 @@ mod tests {
     fn test_modifier_critical_failure() {
         let res = modifier.parse("cf").unwrap();
         assert_eq!(res, Modifier::CriticalFailure(None))
+    }
+
+    #[test]
+    fn test_modifier_sort_default() {
+        let res = modifier.parse("s").unwrap();
+        assert_eq!(res, Modifier::Sort(SortKind::Ascending))
+    }
+
+    #[test]
+    fn test_modifier_sort_ascending() {
+        let res = modifier.parse("sa").unwrap();
+        assert_eq!(res, Modifier::Sort(SortKind::Ascending))
+    }
+
+    #[test]
+    fn test_modifier_sort_descending() {
+        let res = modifier.parse("sd").unwrap();
+        assert_eq!(res, Modifier::Sort(SortKind::Descending))
     }
 }
