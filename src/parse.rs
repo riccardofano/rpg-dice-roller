@@ -19,6 +19,27 @@ pub enum DieKind {
     Fudge2,
 }
 
+pub enum Modifier {
+    Min(u32),
+    Max(u32),
+    Exploding, // TODO, compare points
+    Compounding,
+    Penetrating,
+    ReRoll,
+    ReRollOnce,
+    Unique,
+    UniqueOnce,
+    KeepHighest,
+    KeepLowest,
+    DropHighest,
+    DropLowest,
+    TargetSuccess,
+    TargetFailure,
+    CriticalSuccess,
+    CriticalFailure,
+    Sort,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Dice {
     pub(crate) quantity: u32,
