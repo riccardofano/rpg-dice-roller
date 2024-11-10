@@ -1,4 +1,3 @@
-use thiserror::Error;
 use winnow::{
     ascii::digit0,
     combinator::{alt, empty, separated_pair},
@@ -9,12 +8,6 @@ use winnow::{
     token::take_while,
     PResult, Parser,
 };
-
-#[derive(Debug, Error)]
-pub enum DiceParseError {
-    #[error("failed to parse")]
-    ParseError,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DieKind {
