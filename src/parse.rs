@@ -151,10 +151,13 @@ fn modifier(input: &mut &str) -> PResult<Modifier> {
         "sa".map(|_| Modifier::Sort(SortKind::Ascending)),
         "sd".map(|_| Modifier::Sort(SortKind::Descending)),
         's'.map(|_| Modifier::Sort(SortKind::Ascending)),
+        preceded('f', cut_err(compare_point)).map(Modifier::TargetFailure),
+        compare_point.map(Modifier::TargetSuccess),
     ))
     .parse_next(input)
 }
 
+// I ran out of branches in the modifier class alt() lmao
 fn exploding(input: &mut &str) -> PResult<Modifier> {
     alt((
         preceded("!p", opt(compare_point))
