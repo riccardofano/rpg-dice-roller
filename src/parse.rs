@@ -146,6 +146,8 @@ fn modifier(input: &mut &str) -> PResult<Modifier> {
             .map(|n| Modifier::Drop(KeepKind::Highest, n)),
         preceded("dl", cut_err(non_zero_start_number)).map(|n| Modifier::Drop(KeepKind::Lowest, n)),
         preceded('d', cut_err(non_zero_start_number)).map(|n| Modifier::Drop(KeepKind::Lowest, n)),
+        preceded("cs", opt(compare_point)).map(Modifier::CriticalSuccess),
+        preceded("cf", opt(compare_point)).map(Modifier::CriticalFailure),
     ))
     .parse_next(input)
 }
@@ -355,5 +357,17 @@ mod tests {
     #[test]
     fn test_modifier_drop_lowest_missing_amount() {
         assert!(modifier.parse("dl").is_err())
+    }
+
+    #[test]
+    fn test_modifier_critical_success() {
+        let res = modifier.parse("cs").unwrap();
+        assert_eq!(res, Modifier::CriticalSuccess(None))
+    }
+
+    #[test]
+    fn test_modifier_critical_failure() {
+        let res = modifier.parse("cf").unwrap();
+        assert_eq!(res, Modifier::CriticalFailure(None))
     }
 }
