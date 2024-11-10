@@ -138,6 +138,10 @@ fn modifier(input: &mut &str) -> PResult<Modifier> {
         preceded("r", opt(compare_point)).map(|cp| Modifier::ReRoll(false, cp)),
         preceded("uo", opt(compare_point)).map(|cp| Modifier::Unique(true, cp)),
         preceded("u", opt(compare_point)).map(|cp| Modifier::Unique(false, cp)),
+        preceded("kl", cut_err(non_zero_start_number)).map(|n| Modifier::Keep(KeepKind::Lowest, n)),
+        preceded("kh", cut_err(non_zero_start_number))
+            .map(|n| Modifier::Keep(KeepKind::Highest, n)),
+        preceded('k', cut_err(non_zero_start_number)).map(|n| Modifier::Keep(KeepKind::Highest, n)),
     ))
     .parse_next(input)
 }
@@ -281,5 +285,38 @@ mod tests {
     fn test_modifier_unique_once() {
         let res = modifier.parse("uo").unwrap();
         assert_eq!(res, Modifier::Unique(true, None))
+    }
+
+    #[test]
+    fn test_modifier_keep_default() {
+        let res = modifier.parse("k2").unwrap();
+        assert_eq!(res, Modifier::Keep(KeepKind::Highest, 2))
+    }
+
+    #[test]
+    fn test_modifier_keep_default_missing_amount() {
+        assert!(modifier.parse("k").is_err())
+    }
+
+    #[test]
+    fn test_modifier_keep_highest() {
+        let res = modifier.parse("kh3").unwrap();
+        assert_eq!(res, Modifier::Keep(KeepKind::Highest, 3))
+    }
+
+    #[test]
+    fn test_modifier_keep_highest_missing_amount() {
+        assert!(modifier.parse("kh").is_err())
+    }
+
+    #[test]
+    fn test_modifier_keep_lowest() {
+        let res = modifier.parse("kl4").unwrap();
+        assert_eq!(res, Modifier::Keep(KeepKind::Lowest, 4))
+    }
+
+    #[test]
+    fn test_modifier_keep_lowest_missing_amount() {
+        assert!(modifier.parse("kl").is_err())
     }
 }
