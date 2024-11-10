@@ -19,24 +19,35 @@ pub enum DieKind {
     Fudge2,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ComparePoint {
+    Equal(u32),
+    NotEqual(u32),
+    LessThan(u32),
+    GreaterThan(u32),
+    LessThanOrEqual(u32),
+    GreaterThanOrEqual(u32),
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum Modifier {
     Min(u32),
     Max(u32),
-    Exploding, // TODO, compare points
-    Compounding,
-    Penetrating,
-    ReRoll,
-    ReRollOnce,
+    Exploding(ComparePoint),
+    Compounding(ComparePoint),
+    Penetrating(ComparePoint),
+    ReRoll(ComparePoint),
+    ReRollOnce(ComparePoint),
     Unique,
     UniqueOnce,
-    KeepHighest,
-    KeepLowest,
-    DropHighest,
-    DropLowest,
-    TargetSuccess,
-    TargetFailure,
-    CriticalSuccess,
-    CriticalFailure,
+    KeepHighest(u32),
+    KeepLowest(u32),
+    DropHighest(u32),
+    DropLowest(u32),
+    TargetSuccess(ComparePoint),
+    TargetFailure(ComparePoint),
+    CriticalSuccess(ComparePoint),
+    CriticalFailure(ComparePoint),
     Sort,
 }
 
