@@ -142,6 +142,10 @@ fn modifier(input: &mut &str) -> PResult<Modifier> {
         preceded("kh", cut_err(non_zero_start_number))
             .map(|n| Modifier::Keep(KeepKind::Highest, n)),
         preceded('k', cut_err(non_zero_start_number)).map(|n| Modifier::Keep(KeepKind::Highest, n)),
+        preceded("dh", cut_err(non_zero_start_number))
+            .map(|n| Modifier::Drop(KeepKind::Highest, n)),
+        preceded("dl", cut_err(non_zero_start_number)).map(|n| Modifier::Drop(KeepKind::Lowest, n)),
+        preceded('d', cut_err(non_zero_start_number)).map(|n| Modifier::Drop(KeepKind::Lowest, n)),
     ))
     .parse_next(input)
 }
@@ -170,7 +174,7 @@ mod tests {
 
     use crate::parse::Modifier;
 
-    use super::{modifier, Dice, DieKind, ExplodingKind};
+    use super::{modifier, Dice, DieKind, ExplodingKind, KeepKind};
 
     #[test]
     fn test_one_standard_d6() {
@@ -318,5 +322,38 @@ mod tests {
     #[test]
     fn test_modifier_keep_lowest_missing_amount() {
         assert!(modifier.parse("kl").is_err())
+    }
+
+    #[test]
+    fn test_modifier_drop_default() {
+        let res = modifier.parse("d2").unwrap();
+        assert_eq!(res, Modifier::Drop(KeepKind::Lowest, 2))
+    }
+
+    #[test]
+    fn test_modifier_drop_default_missing_amount() {
+        assert!(modifier.parse("d").is_err())
+    }
+
+    #[test]
+    fn test_modifier_drop_highest() {
+        let res = modifier.parse("dh3").unwrap();
+        assert_eq!(res, Modifier::Drop(KeepKind::Highest, 3))
+    }
+
+    #[test]
+    fn test_modifier_drop_highest_missing_amount() {
+        assert!(modifier.parse("dh").is_err())
+    }
+
+    #[test]
+    fn test_modifier_drop_lowest() {
+        let res = modifier.parse("dl4").unwrap();
+        assert_eq!(res, Modifier::Drop(KeepKind::Lowest, 4))
+    }
+
+    #[test]
+    fn test_modifier_drop_lowest_missing_amount() {
+        assert!(modifier.parse("dl").is_err())
     }
 }
