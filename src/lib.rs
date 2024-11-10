@@ -2,7 +2,6 @@ use thiserror::Error;
 use winnow::{
     ascii::digit0,
     combinator::{alt, empty, preceded, separated_pair},
-    error::{StrContext, StrContextValue},
     token::take_while,
     PResult, Parser,
 };
@@ -29,42 +28,26 @@ pub struct Dice {
 }
 
 impl Dice {
-    pub fn parse(input: &str) -> Result<Self, String> {
+    pub fn parse(input: &str) -> Result<Dice, String> {
         dice.parse(input).map_err(|e| e.to_string())
     }
 }
 
 fn dice(input: &mut &str) -> PResult<Dice> {
     separated_pair(
-        alt((non_zero_start_number, empty.map(|_| 1)))
-            .context(StrContext::Label("quantity"))
-            .context(StrContext::Expected(StrContextValue::Description(
-                "Non zero starting number or empty value",
-            ))),
+        alt((non_zero_start_number, empty.map(|_| 1))),
         'd',
         die_kind,
     )
-    .parse_next(input)
     .map(|(quantity, kind)| Dice { quantity, kind })
+    .parse_next(input)
 }
 
 fn die_kind(input: &mut &str) -> PResult<DieKind> {
     alt((
-        '%'.map(|_| DieKind::Standard(100))
-            .context(StrContext::Label("Percentile die"))
-            .context(StrContext::Expected(StrContextValue::CharLiteral('%'))),
-        alt((preceded("F.", non_zero_start_number), 'F'.map(|_| 2)))
-            .context(StrContext::Label("Fate die"))
-            .context(StrContext::Expected(StrContextValue::Description(
-                "F or F.number not starting with 0",
-            )))
-            .map(DieKind::Fate),
-        non_zero_start_number
-            .map(DieKind::Standard)
-            .context(StrContext::Label("Standard die"))
-            .context(StrContext::Expected(StrContextValue::Description(
-                "Number not starting with 0",
-            ))),
+        '%'.map(|_| DieKind::Standard(100)),
+        alt((preceded("F.", non_zero_start_number), 'F'.map(|_| 2))).map(DieKind::Fate),
+        non_zero_start_number.map(DieKind::Standard),
     ))
     .parse_next(input)
 }
@@ -80,29 +63,29 @@ mod tests {
     use crate::{Dice, DieKind};
 
     #[test]
-    fn one_standard_d6() {
+    fn test_one_standard_d6() {
         let dice = Dice::parse("1d6").unwrap();
         assert_eq!(dice.quantity, 1);
         assert_eq!(dice.kind, DieKind::Standard(6))
     }
 
     #[test]
-    fn one_standard_d6_without_quantity() {
+    fn test_one_standard_d6_without_quantity() {
         let dice = Dice::parse("d6").unwrap();
         assert_eq!(dice.quantity, 1);
         assert_eq!(dice.kind, DieKind::Standard(6))
     }
 
     #[test]
-    fn one_percentile_dice() {
+    fn test_one_percentile_dice() {
         let dice = Dice::parse("1d%").unwrap();
         assert_eq!(dice.quantity, 1);
         assert_eq!(dice.kind, DieKind::Standard(100))
     }
 
     #[test]
-    fn one_fate_dice() {
-        let dice = Dice::parse("1dF.2").unwrap();
+    fn test_one_default_fate_dice() {
+        let dice = Dice::parse("1dF").unwrap();
         assert_eq!(dice.quantity, 1);
         assert_eq!(dice.kind, DieKind::Fate(2))
     }
