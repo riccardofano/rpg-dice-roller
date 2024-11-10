@@ -1,6 +1,6 @@
 use winnow::{
     ascii::digit0,
-    combinator::{alt, empty, separated_pair},
+    combinator::{alt, cut_err, empty, fail, opt, preceded, separated_pair},
     error::{
         StrContext::{Expected, Label},
         StrContextValue::{CharLiteral, Description, StringLiteral},
@@ -133,15 +133,27 @@ fn modifier(input: &mut &str) -> PResult<Modifier> {
     alt((
         preceded("min", cut_err(non_zero_start_number)).map(Modifier::Min),
         preceded("max", cut_err(non_zero_start_number)).map(Modifier::Max),
-    ))
-    .parse_next(input)
-}
+        preceded("!", cut_err(exploding)),
     ))
     .parse_next(input)
 }
 
+fn exploding(input: &mut &str) -> PResult<Modifier> {
+    alt((
+        preceded("!p", opt(compare_point))
+            .map(|cp| Modifier::Exploding(ExplodingKind::PenetratingCompounding, cp)),
+        preceded("p", opt(compare_point))
+            .map(|cp| Modifier::Exploding(ExplodingKind::Penetrating, cp)),
+        preceded("!", opt(compare_point))
+            .map(|cp| Modifier::Exploding(ExplodingKind::Compounding, cp)),
+        opt(compare_point).map(|cp| Modifier::Exploding(ExplodingKind::Standard, cp)),
+    ))
+    .parse_next(input)
+}
+
+// TODO
 fn compare_point(input: &mut &str) -> PResult<ComparePoint> {
-    todo!();
+    fail.parse_next(input)
 }
 
 #[cfg(test)]
@@ -150,7 +162,7 @@ mod tests {
 
     use crate::parse::Modifier;
 
-    use super::{modifier, Dice, DieKind};
+    use super::{modifier, Dice, DieKind, ExplodingKind};
 
     #[test]
     fn test_one_standard_d6() {
@@ -214,5 +226,32 @@ mod tests {
     #[test]
     fn test_modifier_max_missing_amount() {
         assert!(modifier.parse("maxa").is_err())
+    }
+
+    #[test]
+    fn test_modifier_exploding_standard() {
+        let res = modifier.parse("!").unwrap();
+        assert_eq!(res, Modifier::Exploding(ExplodingKind::Standard, None))
+    }
+
+    #[test]
+    fn test_modifier_penetrating_standard() {
+        let res = modifier.parse("!p").unwrap();
+        assert_eq!(res, Modifier::Exploding(ExplodingKind::Penetrating, None))
+    }
+
+    #[test]
+    fn test_modifier_compounding_standard() {
+        let res = modifier.parse("!!").unwrap();
+        assert_eq!(res, Modifier::Exploding(ExplodingKind::Compounding, None))
+    }
+
+    #[test]
+    fn test_modifier_penetrating_compounding_standard() {
+        let res = modifier.parse("!!p").unwrap();
+        assert_eq!(
+            res,
+            Modifier::Exploding(ExplodingKind::PenetratingCompounding, None)
+        )
     }
 }
