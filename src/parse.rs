@@ -19,7 +19,7 @@ pub enum DieKind {
     Fudge2,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ComparePoint {
     Equal(u32),
     NotEqual(u32),
@@ -134,6 +134,8 @@ fn modifier(input: &mut &str) -> PResult<Modifier> {
         preceded("min", cut_err(non_zero_start_number)).map(Modifier::Min),
         preceded("max", cut_err(non_zero_start_number)).map(Modifier::Max),
         preceded("!", cut_err(exploding)),
+        preceded("ro", opt(compare_point)).map(|cp| Modifier::ReRoll(true, cp)),
+        preceded("r", opt(compare_point)).map(|cp| Modifier::ReRoll(false, cp)),
     ))
     .parse_next(input)
 }
@@ -253,5 +255,17 @@ mod tests {
             res,
             Modifier::Exploding(ExplodingKind::PenetratingCompounding, None)
         )
+    }
+
+    #[test]
+    fn test_modifier_reroll() {
+        let res = modifier.parse("r").unwrap();
+        assert_eq!(res, Modifier::ReRoll(false, None))
+    }
+
+    #[test]
+    fn test_modifier_reroll_once() {
+        let res = modifier.parse("ro").unwrap();
+        assert_eq!(res, Modifier::ReRoll(true, None))
     }
 }
