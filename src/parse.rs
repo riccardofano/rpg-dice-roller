@@ -136,6 +136,8 @@ fn modifier(input: &mut &str) -> PResult<Modifier> {
         preceded("!", cut_err(exploding)),
         preceded("ro", opt(compare_point)).map(|cp| Modifier::ReRoll(true, cp)),
         preceded("r", opt(compare_point)).map(|cp| Modifier::ReRoll(false, cp)),
+        preceded("uo", opt(compare_point)).map(|cp| Modifier::Unique(true, cp)),
+        preceded("u", opt(compare_point)).map(|cp| Modifier::Unique(false, cp)),
     ))
     .parse_next(input)
 }
@@ -267,5 +269,17 @@ mod tests {
     fn test_modifier_reroll_once() {
         let res = modifier.parse("ro").unwrap();
         assert_eq!(res, Modifier::ReRoll(true, None))
+    }
+
+    #[test]
+    fn test_modifier_unique() {
+        let res = modifier.parse("u").unwrap();
+        assert_eq!(res, Modifier::Unique(false, None))
+    }
+
+    #[test]
+    fn test_modifier_unique_once() {
+        let res = modifier.parse("uo").unwrap();
+        assert_eq!(res, Modifier::Unique(true, None))
     }
 }
