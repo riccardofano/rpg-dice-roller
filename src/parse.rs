@@ -29,32 +29,49 @@ pub enum ComparePoint {
     GreaterThanOrEqual(u32),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExplodingKind {
+    Standard,
+    Penetrating,
+    Compounding,
+    PenetratingCompounding,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortKind {
+    Ascending,
+    Descending,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeepKind {
+    Highest,
+    Lowest,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Modifier {
     Min(u32),
     Max(u32),
-    Exploding(ComparePoint),
-    Compounding(ComparePoint),
-    Penetrating(ComparePoint),
-    ReRoll(ComparePoint),
-    ReRollOnce(ComparePoint),
-    Unique,
-    UniqueOnce,
-    KeepHighest(u32),
-    KeepLowest(u32),
-    DropHighest(u32),
-    DropLowest(u32),
+    Exploding(ExplodingKind, Option<ComparePoint>),
+    /// True means to only re-roll once
+    ReRoll(bool, Option<ComparePoint>),
+    /// True means to only re-roll a unique dice once
+    Unique(bool, Option<ComparePoint>),
+    Keep(KeepKind, u32),
+    Drop(KeepKind, u32),
     TargetSuccess(ComparePoint),
     TargetFailure(ComparePoint),
-    CriticalSuccess(ComparePoint),
-    CriticalFailure(ComparePoint),
-    Sort,
+    CriticalSuccess(Option<ComparePoint>),
+    CriticalFailure(Option<ComparePoint>),
+    Sort(SortKind),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Dice {
     pub(crate) quantity: u32,
     pub(crate) kind: DieKind,
+    pub(crate) modifiers: Vec<Modifier>,
 }
 
 impl Dice {
@@ -73,7 +90,11 @@ fn dice(input: &mut &str) -> PResult<Dice> {
         'd'.context(Label("d")).context(Expected(CharLiteral('d'))),
         die_kind,
     )
-    .map(|(quantity, kind)| Dice { quantity, kind })
+    .map(|(quantity, kind)| Dice {
+        quantity,
+        kind,
+        modifiers: Vec::new(),
+    })
     .context(Label("Dice"))
     .parse_next(input)
 }
@@ -108,9 +129,28 @@ fn non_zero_start_number(input: &mut &str) -> PResult<u32> {
         .map(|(non_zero, other)| format!("{non_zero}{other}").parse().unwrap_or(0))
 }
 
+fn modifier(input: &mut &str) -> PResult<Modifier> {
+    alt((
+        preceded("min", cut_err(non_zero_start_number)).map(Modifier::Min),
+        preceded("max", cut_err(non_zero_start_number)).map(Modifier::Max),
+    ))
+    .parse_next(input)
+}
+    ))
+    .parse_next(input)
+}
+
+fn compare_point(input: &mut &str) -> PResult<ComparePoint> {
+    todo!();
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Dice, DieKind};
+    use winnow::Parser;
+
+    use crate::parse::Modifier;
+
+    use super::{modifier, Dice, DieKind};
 
     #[test]
     fn test_one_standard_d6() {
@@ -152,5 +192,27 @@ mod tests {
         let dice = Dice::parse("1dF.1").unwrap();
         assert_eq!(dice.quantity, 1);
         assert_eq!(dice.kind, DieKind::Fudge1)
+    }
+
+    #[test]
+    fn test_modifier_min() {
+        let res = modifier.parse("min3").unwrap();
+        assert_eq!(res, Modifier::Min(3))
+    }
+
+    #[test]
+    fn test_modifier_min_missing_amount() {
+        assert!(modifier.parse("min").is_err())
+    }
+
+    #[test]
+    fn test_modifier_max() {
+        let res = modifier.parse("max6").unwrap();
+        assert_eq!(res, Modifier::Max(6))
+    }
+
+    #[test]
+    fn test_modifier_max_missing_amount() {
+        assert!(modifier.parse("maxa").is_err())
     }
 }
