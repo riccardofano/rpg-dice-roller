@@ -1,11 +1,10 @@
 use winnow::{
-    ascii::digit0,
-    combinator::{alt, cut_err, empty, fail, opt, preceded, repeat, separated_pair},
+    ascii::{dec_int, dec_uint},
+    combinator::{alt, cut_err, empty, opt, preceded, repeat, separated_pair},
     error::{
         StrContext::{Expected, Label},
         StrContextValue::{CharLiteral, Description, StringLiteral},
     },
-    token::take_while,
     PResult, Parser,
 };
 
@@ -21,12 +20,12 @@ pub enum DieKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ComparePoint {
-    Equal(u32),
-    NotEqual(u32),
-    LessThan(u32),
-    GreaterThan(u32),
-    LessThanOrEqual(u32),
-    GreaterThanOrEqual(u32),
+    Equal(i32),
+    NotEqual(i32),
+    LessThan(i32),
+    GreaterThan(i32),
+    LessThanOrEqual(i32),
+    GreaterThanOrEqual(i32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,29 +51,34 @@ pub enum KeepKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Modifier {
-    Min(u32),
-    Max(u32),
+    Min(i32),
+    Max(i32),
     Exploding(ExplodingKind, Option<ComparePoint>),
     /// True means to only re-roll once
     ReRoll(bool, Option<ComparePoint>),
     /// True means to only re-roll a unique dice once
     Unique(bool, Option<ComparePoint>),
-    Keep(KeepKind, u32),
-    Drop(KeepKind, u32),
     TargetSuccess(ComparePoint),
     TargetFailure(ComparePoint),
     CriticalSuccess(Option<ComparePoint>),
     CriticalFailure(Option<ComparePoint>),
+    Keep(KeepKind, u32),
+    Drop(KeepKind, u32),
     Sort(SortKind),
 }
 
 impl Modifier {
-    fn discriminant(&self) -> u8 {
+    pub fn discriminant(&self) -> u8 {
         // SAFETY: Because `Self` is marked `repr(u8)`, its layout is a `repr(C)` `union`
         // between `repr(C)` structs, each of which has the `u8` discriminant as its first
         // field, so we can read the discriminant without offsetting the pointer.
         // NOTE: https://doc.rust-lang.org/std/mem/fn.discriminant.html#accessing-the-numeric-value-of-the-discriminant
         unsafe { *<*const _>::from(self).cast::<u8>() }
+    }
+}
+impl PartialOrd for Modifier {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.discriminant().cmp(&other.discriminant()))
     }
 }
 
@@ -94,7 +98,7 @@ impl Dice {
 fn dice(input: &mut &str) -> PResult<Dice> {
     (
         separated_pair(
-            alt((non_zero_start_number, empty.map(|_| 1)))
+            alt((dec_uint, empty.map(|_| 1)))
                 .context(Label("dice quantity"))
                 .context(Expected(Description(
                     "quantity must either be a number without leading 0s or empty (to indicate 1 die)",
@@ -134,7 +138,7 @@ fn die_kind(input: &mut &str) -> PResult<DieKind> {
         'F'.map(|_| DieKind::Fudge2)
             .context(Label("Standard Fudge die"))
             .context(Expected(CharLiteral('F'))),
-        non_zero_start_number
+        dec_uint
             .map(DieKind::Standard)
             .context(Label("Standard")),
     ))
@@ -142,16 +146,10 @@ fn die_kind(input: &mut &str) -> PResult<DieKind> {
     .parse_next(input)
 }
 
-fn non_zero_start_number(input: &mut &str) -> PResult<u32> {
-    (take_while(1.., '1'..='9'), digit0)
-        .parse_next(input)
-        .map(|(non_zero, other)| format!("{non_zero}{other}").parse().unwrap_or(0))
-}
-
 fn modifier(input: &mut &str) -> PResult<Modifier> {
     alt((
-        preceded("min", cut_err(non_zero_start_number)).map(Modifier::Min),
-        preceded("max", cut_err(non_zero_start_number)).map(Modifier::Max),
+        preceded("min", cut_err(dec_int)).map(Modifier::Min),
+        preceded("max", cut_err(dec_int)).map(Modifier::Max),
         // TODO: Shouldn't cut_err because the ! could be a ComparePoint::NotEqual,
         // I might decide to not support != because it's confusing, it's standard syntax
         // in most common syntax languages but in this case you need to know how it
@@ -161,14 +159,14 @@ fn modifier(input: &mut &str) -> PResult<Modifier> {
         preceded("r", opt(compare_point)).map(|cp| Modifier::ReRoll(false, cp)),
         preceded("uo", opt(compare_point)).map(|cp| Modifier::Unique(true, cp)),
         preceded("u", opt(compare_point)).map(|cp| Modifier::Unique(false, cp)),
-        preceded("kl", cut_err(non_zero_start_number)).map(|n| Modifier::Keep(KeepKind::Lowest, n)),
-        preceded("kh", cut_err(non_zero_start_number))
+        preceded("kl", cut_err(dec_uint)).map(|n| Modifier::Keep(KeepKind::Lowest, n)),
+        preceded("kh", cut_err(dec_uint))
             .map(|n| Modifier::Keep(KeepKind::Highest, n)),
-        preceded('k', cut_err(non_zero_start_number)).map(|n| Modifier::Keep(KeepKind::Highest, n)),
-        preceded("dh", cut_err(non_zero_start_number))
+        preceded('k', cut_err(dec_uint)).map(|n| Modifier::Keep(KeepKind::Highest, n)),
+        preceded("dh", cut_err(dec_uint))
             .map(|n| Modifier::Drop(KeepKind::Highest, n)),
-        preceded("dl", cut_err(non_zero_start_number)).map(|n| Modifier::Drop(KeepKind::Lowest, n)),
-        preceded('d', cut_err(non_zero_start_number)).map(|n| Modifier::Drop(KeepKind::Lowest, n)),
+        preceded("dl", cut_err(dec_uint)).map(|n| Modifier::Drop(KeepKind::Lowest, n)),
+        preceded('d', cut_err(dec_uint)).map(|n| Modifier::Drop(KeepKind::Lowest, n)),
         preceded("cs", opt(compare_point)).map(Modifier::CriticalSuccess),
         preceded("cf", opt(compare_point)).map(Modifier::CriticalFailure),
         "sa".map(|_| Modifier::Sort(SortKind::Ascending)),
@@ -195,14 +193,14 @@ fn exploding(input: &mut &str) -> PResult<Modifier> {
 
 fn compare_point(input: &mut &str) -> PResult<ComparePoint> {
     alt((
-        preceded("<=", cut_err(non_zero_start_number)).map(ComparePoint::LessThanOrEqual),
-        preceded(">=", cut_err(non_zero_start_number)).map(ComparePoint::GreaterThanOrEqual),
+        preceded("<=", cut_err(dec_int)).map(ComparePoint::LessThanOrEqual),
+        preceded(">=", cut_err(dec_int)).map(ComparePoint::GreaterThanOrEqual),
         // TODO: Missing != (not equal), it should work with every modifier
         // except the exploding ones, those need to use <>
-        preceded("<>", cut_err(non_zero_start_number)).map(ComparePoint::NotEqual),
-        preceded('=', cut_err(non_zero_start_number)).map(ComparePoint::Equal),
-        preceded('<', cut_err(non_zero_start_number)).map(ComparePoint::LessThan),
-        preceded('>', cut_err(non_zero_start_number)).map(ComparePoint::GreaterThan),
+        preceded("<>", cut_err(dec_int)).map(ComparePoint::NotEqual),
+        preceded('=', cut_err(dec_int)).map(ComparePoint::Equal),
+        preceded('<', cut_err(dec_int)).map(ComparePoint::LessThan),
+        preceded('>', cut_err(dec_int)).map(ComparePoint::GreaterThan),
     ))
     .parse_next(input)
 }
