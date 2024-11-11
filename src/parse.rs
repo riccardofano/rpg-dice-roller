@@ -133,6 +133,10 @@ fn modifier(input: &mut &str) -> PResult<Modifier> {
     alt((
         preceded("min", cut_err(non_zero_start_number)).map(Modifier::Min),
         preceded("max", cut_err(non_zero_start_number)).map(Modifier::Max),
+        // TODO: Shouldn't cut_err because the ! could be a ComparePoint::NotEqual,
+        // I might decide to not support != because it's confusing, it's standard syntax
+        // in most common syntax languages but in this case you need to know how it
+        // interacts with different modifiers
         preceded("!", cut_err(exploding)),
         preceded("ro", opt(compare_point)).map(|cp| Modifier::ReRoll(true, cp)),
         preceded("r", opt(compare_point)).map(|cp| Modifier::ReRoll(false, cp)),
@@ -157,7 +161,6 @@ fn modifier(input: &mut &str) -> PResult<Modifier> {
     .parse_next(input)
 }
 
-// I ran out of branches in the modifier class alt() lmao
 fn exploding(input: &mut &str) -> PResult<Modifier> {
     alt((
         preceded("!p", opt(compare_point))
@@ -171,18 +174,27 @@ fn exploding(input: &mut &str) -> PResult<Modifier> {
     .parse_next(input)
 }
 
-// TODO
 fn compare_point(input: &mut &str) -> PResult<ComparePoint> {
-    fail.parse_next(input)
+    alt((
+        preceded("<=", cut_err(non_zero_start_number)).map(ComparePoint::LessThanOrEqual),
+        preceded(">=", cut_err(non_zero_start_number)).map(ComparePoint::GreaterThanOrEqual),
+        // TODO: Missing != (not equal), it should work with every modifier
+        // except the exploding ones, those need to use <>
+        preceded("<>", cut_err(non_zero_start_number)).map(ComparePoint::NotEqual),
+        preceded('=', cut_err(non_zero_start_number)).map(ComparePoint::Equal),
+        preceded('<', cut_err(non_zero_start_number)).map(ComparePoint::LessThan),
+        preceded('>', cut_err(non_zero_start_number)).map(ComparePoint::GreaterThan),
+    ))
+    .parse_next(input)
 }
 
 #[cfg(test)]
 mod tests {
     use winnow::Parser;
 
-    use crate::parse::Modifier;
+    use crate::parse::{ComparePoint, Modifier};
 
-    use super::{modifier, Dice, DieKind, ExplodingKind, KeepKind, SortKind};
+    use super::{compare_point, modifier, Dice, DieKind, ExplodingKind, KeepKind, SortKind};
 
     #[test]
     fn test_one_standard_d6() {
@@ -393,5 +405,41 @@ mod tests {
     fn test_modifier_sort_descending() {
         let res = modifier.parse("sd").unwrap();
         assert_eq!(res, Modifier::Sort(SortKind::Descending))
+    }
+
+    #[test]
+    fn test_compare_point_equals() {
+        let res = compare_point.parse("=3").unwrap();
+        assert_eq!(res, ComparePoint::Equal(3))
+    }
+
+    #[test]
+    fn test_compare_point_not_equals() {
+        let res = compare_point.parse("<>69").unwrap();
+        assert_eq!(res, ComparePoint::NotEqual(69))
+    }
+
+    #[test]
+    fn test_compare_point_less_than() {
+        let res = compare_point.parse("<123").unwrap();
+        assert_eq!(res, ComparePoint::LessThan(123))
+    }
+
+    #[test]
+    fn test_compare_point_greater_than() {
+        let res = compare_point.parse(">123").unwrap();
+        assert_eq!(res, ComparePoint::GreaterThan(123))
+    }
+
+    #[test]
+    fn test_compare_point_less_than_or_equal() {
+        let res = compare_point.parse("<=123").unwrap();
+        assert_eq!(res, ComparePoint::LessThanOrEqual(123))
+    }
+
+    #[test]
+    fn test_compare_point_greater_than_or_equal() {
+        let res = compare_point.parse(">=456").unwrap();
+        assert_eq!(res, ComparePoint::GreaterThanOrEqual(456))
     }
 }
