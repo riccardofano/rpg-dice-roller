@@ -267,15 +267,41 @@ mod tests {
     }
 
     #[test]
+    fn test_modifier_exploding_standard_not_equal() {
+        let res = modifier.parse("!<>8").unwrap();
+        let expected =
+            Modifier::Exploding(ExplodingKind::Standard, Some(ComparePoint::NotEqual(8)));
+        assert_eq!(res, expected)
+    }
+
+    #[test]
     fn test_modifier_penetrating_standard() {
         let res = modifier.parse("!p").unwrap();
         assert_eq!(res, Modifier::Exploding(ExplodingKind::Penetrating, None))
     }
 
     #[test]
+    fn test_modifier_penetrating_standard_less_than() {
+        let res = modifier.parse("!p<54").unwrap();
+        let expected =
+            Modifier::Exploding(ExplodingKind::Penetrating, Some(ComparePoint::LessThan(54)));
+        assert_eq!(res, expected)
+    }
+
+    #[test]
     fn test_modifier_compounding_standard() {
         let res = modifier.parse("!!").unwrap();
         assert_eq!(res, Modifier::Exploding(ExplodingKind::Compounding, None))
+    }
+
+    #[test]
+    fn test_modifier_compounding_standard_greater_than() {
+        let res = modifier.parse("!!>67").unwrap();
+        let expected = Modifier::Exploding(
+            ExplodingKind::Compounding,
+            Some(ComparePoint::GreaterThan(67)),
+        );
+        assert_eq!(res, expected)
     }
 
     #[test]
@@ -288,9 +314,25 @@ mod tests {
     }
 
     #[test]
+    fn test_modifier_penetrating_compounding_standard_greater_or_equal() {
+        let res = modifier.parse("!!p>=7").unwrap();
+        let expected = Modifier::Exploding(
+            ExplodingKind::PenetratingCompounding,
+            Some(ComparePoint::GreaterThanOrEqual(7)),
+        );
+        assert_eq!(res, expected)
+    }
+
+    #[test]
     fn test_modifier_reroll() {
         let res = modifier.parse("r").unwrap();
         assert_eq!(res, Modifier::ReRoll(false, None))
+    }
+
+    #[test]
+    fn test_modifier_reroll_equals() {
+        let res = modifier.parse("r=6").unwrap();
+        assert_eq!(res, Modifier::ReRoll(false, Some(ComparePoint::Equal(6))))
     }
 
     #[test]
@@ -300,15 +342,34 @@ mod tests {
     }
 
     #[test]
+    fn test_modifier_reroll_once_less_than() {
+        let res = modifier.parse("ro<3").unwrap();
+        assert_eq!(res, Modifier::ReRoll(true, Some(ComparePoint::LessThan(3))))
+    }
+
+    #[test]
     fn test_modifier_unique() {
         let res = modifier.parse("u").unwrap();
         assert_eq!(res, Modifier::Unique(false, None))
     }
 
     #[test]
+    fn test_modifier_unique_equals() {
+        let res = modifier.parse("u=5").unwrap();
+        assert_eq!(res, Modifier::Unique(false, Some(ComparePoint::Equal(5))))
+    }
+
+    #[test]
     fn test_modifier_unique_once() {
         let res = modifier.parse("uo").unwrap();
         assert_eq!(res, Modifier::Unique(true, None))
+    }
+
+    #[test]
+    fn test_modifier_unique_once_greater() {
+        let res = modifier.parse("uo>6").unwrap();
+        let expected = Modifier::Unique(true, Some(ComparePoint::GreaterThan(6)));
+        assert_eq!(res, expected)
     }
 
     #[test]
@@ -384,9 +445,23 @@ mod tests {
     }
 
     #[test]
+    fn test_modifier_critical_success_less_than_or_equal() {
+        let res = modifier.parse("cs<=5").unwrap();
+        let expected = Modifier::CriticalSuccess(Some(ComparePoint::LessThanOrEqual(5)));
+        assert_eq!(res, expected)
+    }
+
+    #[test]
     fn test_modifier_critical_failure() {
         let res = modifier.parse("cf").unwrap();
         assert_eq!(res, Modifier::CriticalFailure(None))
+    }
+
+    #[test]
+    fn test_modifier_critical_failure_greater_than_or_equal() {
+        let res = modifier.parse("cf>=1").unwrap();
+        let expected = Modifier::CriticalFailure(Some(ComparePoint::GreaterThanOrEqual(1)));
+        assert_eq!(res, expected)
     }
 
     #[test]
