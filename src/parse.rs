@@ -1,6 +1,6 @@
 use winnow::{
     ascii::digit0,
-    combinator::{alt, cut_err, empty, fail, opt, preceded, separated_pair},
+    combinator::{alt, cut_err, empty, fail, opt, preceded, repeat, separated_pair},
     error::{
         StrContext::{Expected, Label},
         StrContextValue::{CharLiteral, Description, StringLiteral},
@@ -50,6 +50,7 @@ pub enum KeepKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Modifier {
     Min(u32),
     Max(u32),
@@ -67,6 +68,16 @@ pub enum Modifier {
     Sort(SortKind),
 }
 
+impl Modifier {
+    fn discriminant(&self) -> u8 {
+        // SAFETY: Because `Self` is marked `repr(u8)`, its layout is a `repr(C)` `union`
+        // between `repr(C)` structs, each of which has the `u8` discriminant as its first
+        // field, so we can read the discriminant without offsetting the pointer.
+        // NOTE: https://doc.rust-lang.org/std/mem/fn.discriminant.html#accessing-the-numeric-value-of-the-discriminant
+        unsafe { *<*const _>::from(self).cast::<u8>() }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Dice {
     pub(crate) quantity: u32,
@@ -81,20 +92,28 @@ impl Dice {
 }
 
 fn dice(input: &mut &str) -> PResult<Dice> {
-    separated_pair(
-        alt((non_zero_start_number, empty.map(|_| 1)))
-            .context(Label("dice quantity"))
-            .context(Expected(Description(
-                "quantity must either be a number without leading 0s or empty (to indicate 1 die)",
-            ))),
-        'd'.context(Label("d")).context(Expected(CharLiteral('d'))),
-        die_kind,
+    (
+        separated_pair(
+            alt((non_zero_start_number, empty.map(|_| 1)))
+                .context(Label("dice quantity"))
+                .context(Expected(Description(
+                    "quantity must either be a number without leading 0s or empty (to indicate 1 die)",
+                ))),
+            'd'.context(Label("d")).context(Expected(CharLiteral('d'))),
+            die_kind
+        ),
+        repeat(0.., modifier)
     )
-    .map(|(quantity, kind)| Dice {
+    .map(|((quantity, kind), mut modifiers): ((u32, DieKind), Vec<Modifier>)| { 
+        // Make sure modifiers are sorted by the order specified in the enum
+        // TODO: Remove duplicates?
+        modifiers.sort_by_key(|a| a.discriminant());
+
+        Dice {
         quantity,
         kind,
-        modifiers: Vec::new(),
-    })
+        modifiers,
+    } })
     .context(Label("Dice"))
     .parse_next(input)
 }
@@ -196,6 +215,10 @@ mod tests {
 
     use super::{compare_point, modifier, Dice, DieKind, ExplodingKind, KeepKind, SortKind};
 
+    /**
+     * Parsing dice without modifiers
+     */
+
     #[test]
     fn test_one_standard_d6() {
         let dice = Dice::parse("1d6").unwrap();
@@ -237,6 +260,10 @@ mod tests {
         assert_eq!(dice.quantity, 1);
         assert_eq!(dice.kind, DieKind::Fudge1)
     }
+
+    /**
+     * Parsing modifiers alone
+     */
 
     #[test]
     fn test_modifier_min() {
@@ -482,6 +509,10 @@ mod tests {
         assert_eq!(res, Modifier::Sort(SortKind::Descending))
     }
 
+    /**
+     * Parsing compare points alone
+     */
+
     #[test]
     fn test_compare_point_equals() {
         let res = compare_point.parse("=3").unwrap();
@@ -517,4 +548,33 @@ mod tests {
         let res = compare_point.parse(">=456").unwrap();
         assert_eq!(res, ComparePoint::GreaterThanOrEqual(456))
     }
+
+    /**
+     * Parsing dice with modifiers
+     */
+
+    #[test]
+    fn test_one_standard_d6_with_one_min_modifier() {
+        let dice = Dice::parse("d6min3").unwrap();
+        assert_eq!(dice.quantity, 1);
+        assert_eq!(dice.kind, DieKind::Standard(6));
+        assert_eq!(dice.modifiers, vec![Modifier::Min(3)]);
+    }
+
+    #[test]
+    fn test_one_standard_d6_with_two_min_modifier() {
+        let dice = Dice::parse("d6min3min2").unwrap();
+        assert_eq!(dice.quantity, 1);
+        assert_eq!(dice.kind, DieKind::Standard(6));
+        assert_eq!(dice.modifiers, vec![Modifier::Min(3), Modifier::Min(2)]);
+    }
+
+    #[test]
+    fn test_one_standard_d6_with_min_max_modifiers() {
+        let dice = Dice::parse("d6max4min2").unwrap();
+        assert_eq!(dice.quantity, 1);
+        assert_eq!(dice.kind, DieKind::Standard(6));
+        assert_eq!(dice.modifiers, vec![Modifier::Min(2), Modifier::Max(4)]);
+    }
+
 }
