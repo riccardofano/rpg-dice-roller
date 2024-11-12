@@ -77,6 +77,12 @@ impl DiceRolls {
             Modifier::Exploding(exploding_kind, compare_point) => {
                 Self::apply_exploding(dice, rolls_info, rng, exploding_kind, compare_point)
             }
+            Modifier::ReRoll(once, compare_point) => {
+                Self::apply_reroll(dice, rolls_info, rng, once, compare_point)
+            }
+            Modifier::Unique(once, compare_point) => {
+                Self::apply_unique(dice, rolls_info, rng, once, compare_point)
+            }
             _ => todo!(),
         }
     }
@@ -170,6 +176,63 @@ impl DiceRolls {
             }
         }
     }
+
+    fn apply_reroll(
+        dice: &Dice,
+        rolls_info: &mut RollsInfo,
+        rng: &mut impl Rng,
+        once: bool,
+        compare_point: Option<ComparePoint>,
+    ) {
+        let should_reroll: Box<dyn Fn(i32) -> bool> = match compare_point {
+            Some(cmp) => cmp.compare_fn(),
+            None => Box::new(|a| a == dice.max_value()),
+        };
+
+        let (iterations, modifier_flag) = if once {
+            (1, ModifierFlags::ReRollOnce)
+        } else {
+            (MAX_ITERATIONS, ModifierFlags::ReRoll)
+        };
+        for _ in 0..iterations + 1 {
+            if !should_reroll(rolls_info.current.value) {
+                break;
+            }
+
+            rolls_info.current.set_modifier_flag(modifier_flag as u8);
+            rolls_info.current.value = dice.roll(rng.gen());
+        }
+    }
+
+    fn apply_unique(
+        dice: &Dice,
+        rolls_info: &mut RollsInfo,
+        rng: &mut impl Rng,
+        once: bool,
+        compare_point: Option<ComparePoint>,
+    ) {
+        let passes_comparison: Box<dyn Fn(i32) -> bool> = match compare_point {
+            Some(cmp) => cmp.compare_fn(),
+            None => Box::new(|_| true),
+        };
+
+        let (iterations, modifier_flag) = if once {
+            (1, ModifierFlags::UniqueOnce)
+        } else {
+            (MAX_ITERATIONS, ModifierFlags::Unique)
+        };
+
+        for _ in 0..iterations {
+            if passes_comparison(rolls_info.current.value)
+                && !rolls_info.all.contains(&rolls_info.current)
+            {
+                break;
+            }
+
+            rolls_info.current.set_modifier_flag(modifier_flag as u8);
+            rolls_info.current.value = dice.roll(rng.gen());
+        }
+    }
 }
 
 impl Dice {
@@ -215,6 +278,7 @@ impl Roll {
     }
 }
 
+<<<<<<< HEAD
 impl ComparePoint {
     fn compare_fn(self) -> Box<dyn Fn(i32) -> bool> {
         match self {
@@ -225,6 +289,22 @@ impl ComparePoint {
             ComparePoint::LessThanOrEqual(n) => Box::new(move |a| a <= n),
             ComparePoint::GreaterThanOrEqual(n) => Box::new(move |a| a >= n),
         }
+=======
+impl PartialEq for Roll {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+impl Eq for Roll {}
+impl Ord for Roll {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.value.cmp(&other.value)
+    }
+}
+impl PartialOrd for Roll {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+>>>>>>> 8148225 (Implement unique modifiers)
     }
 }
 
