@@ -95,6 +95,8 @@ impl DiceRolls {
             Modifier::CriticalFailure(compare_point) => {
                 Self::apply_critical_failure(dice, rolls_info, compare_point)
             }
+            Modifier::Keep(keep_kind, amount) => Self::apply_keep(rolls_info, keep_kind, amount),
+            Modifier::Drop(keep_kind, amount) => Self::apply_drop(rolls_info, keep_kind, amount),
             _ => todo!(),
         }
     }
@@ -297,6 +299,38 @@ impl DiceRolls {
             rolls_info
                 .current
                 .set_modifier_flag(ModifierFlags::CriticalFailure as u8);
+        }
+    }
+
+    fn apply_keep(rolls_info: &mut RollsInfo, keep_kind: KeepKind, amount: u32) {
+        let mut indices: Vec<usize> = (0..rolls_info.all.len()).collect();
+        match keep_kind {
+            KeepKind::Highest => {
+                indices.sort_by(|&ia, &ib| rolls_info.all[ia].value.cmp(&rolls_info.all[ib].value))
+            }
+            KeepKind::Lowest => {
+                indices.sort_by(|&ia, &ib| rolls_info.all[ia].value.cmp(&rolls_info.all[ib].value))
+            }
+        }
+
+        for &i in &indices[(amount as usize)..] {
+            rolls_info.all[i].set_modifier_flag(ModifierFlags::Drop as u8);
+        }
+    }
+
+    fn apply_drop(rolls_info: &mut RollsInfo, keep_kind: KeepKind, amount: u32) {
+        let mut indices: Vec<usize> = (0..rolls_info.all.len()).collect();
+        match keep_kind {
+            KeepKind::Highest => {
+                indices.sort_by(|&ia, &ib| rolls_info.all[ia].value.cmp(&rolls_info.all[ib].value))
+            }
+            KeepKind::Lowest => {
+                indices.sort_by(|&ia, &ib| rolls_info.all[ia].value.cmp(&rolls_info.all[ib].value))
+            }
+        }
+
+        for &i in &indices[..(amount as usize)] {
+            rolls_info.all[i].set_modifier_flag(ModifierFlags::Drop as u8);
         }
     }
 
