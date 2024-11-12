@@ -1,5 +1,8 @@
-use crate::parse::{ComparePoint, Dice, DieKind, ExplodingKind, KeepKind, Modifier};
 use rand::Rng;
+
+use crate::parse::{ComparePoint, Dice, DieKind, ExplodingKind, KeepKind, Modifier};
+
+const MAX_ITERATIONS: usize = 1000;
 
 #[derive(Debug, Clone, Copy)]
 #[repr(usize)]
@@ -71,6 +74,9 @@ impl DiceRolls {
         match modifier {
             Modifier::Min(min) => Self::apply_min(min, &mut rolls_info.current),
             Modifier::Max(max) => Self::apply_max(max, &mut rolls_info.current),
+            Modifier::Exploding(exploding_kind, compare_point) => {
+                Self::apply_exploding(dice, rolls_info, rng, exploding_kind, compare_point)
+            }
             _ => todo!(),
         }
     }
@@ -86,6 +92,82 @@ impl DiceRolls {
         if max < roll.value {
             roll.value = max;
             roll.set_modifier_flag(ModifierFlags::Max as u8);
+        }
+    }
+
+    fn apply_exploding(
+        dice: &Dice,
+        rolls_info: &mut RollsInfo,
+        rng: &mut impl Rng,
+        exploding_kind: ExplodingKind,
+        compare_point: Option<ComparePoint>,
+    ) {
+        let should_explode: Box<dyn Fn(i32) -> bool> = match compare_point {
+            Some(cmp) => cmp.compare_fn(),
+            None => Box::new(|a| a == dice.max_value()),
+        };
+
+        match exploding_kind {
+            ExplodingKind::Standard => {
+                for _ in 0..MAX_ITERATIONS + 1 {
+                    if !should_explode(rolls_info.current.value) {
+                        break;
+                    }
+
+                    rolls_info
+                        .current
+                        .set_modifier_flag(ModifierFlags::ExplodingStandard as u8);
+                    rolls_info.all.push(rolls_info.current);
+
+                    let new_roll_value = dice.roll(rng.gen());
+                    rolls_info.current = Roll::new(new_roll_value);
+                }
+            }
+            ExplodingKind::Penetrating => {
+                for _ in 0..MAX_ITERATIONS + 1 {
+                    if !should_explode(rolls_info.current.value) {
+                        break;
+                    }
+
+                    rolls_info
+                        .current
+                        .set_modifier_flag(ModifierFlags::ExplodingPenetrating as u8);
+                    rolls_info.all.push(rolls_info.current);
+
+                    let new_roll_value = dice.roll(rng.gen());
+                    rolls_info.current = Roll::new(new_roll_value - 1);
+                }
+            }
+            ExplodingKind::Compounding => {
+                let mut last_roll_value = rolls_info.current.value;
+
+                for _ in 0..MAX_ITERATIONS + 1 {
+                    if !should_explode(last_roll_value) {
+                        break;
+                    }
+
+                    rolls_info
+                        .current
+                        .set_modifier_flag(ModifierFlags::ExplodingCompounding as u8);
+                    last_roll_value = dice.roll(rng.gen());
+                    rolls_info.current.value += last_roll_value;
+                }
+            }
+            ExplodingKind::PenetratingCompounding => {
+                let mut last_roll_value = rolls_info.current.value;
+
+                for _ in 0..MAX_ITERATIONS + 1 {
+                    if !should_explode(last_roll_value) {
+                        break;
+                    }
+
+                    rolls_info
+                        .current
+                        .set_modifier_flag(ModifierFlags::ExplodingPenetratingCompounding as u8);
+                    last_roll_value = dice.roll(rng.gen()) - 1;
+                    rolls_info.current.value += last_roll_value;
+                }
+            }
         }
     }
 }
@@ -130,6 +212,19 @@ impl Roll {
 
     fn was_modifier_applied(&self, modifier_flag: u8) -> bool {
         (self.modifier_flags & (1 << modifier_flag)) != 0
+    }
+}
+
+impl ComparePoint {
+    fn compare_fn(self) -> Box<dyn Fn(i32) -> bool> {
+        match self {
+            ComparePoint::Equal(n) => Box::new(move |a| a == n),
+            ComparePoint::NotEqual(n) => Box::new(move |a| a != n),
+            ComparePoint::LessThan(n) => Box::new(move |a| a < n),
+            ComparePoint::GreaterThan(n) => Box::new(move |a| a > n),
+            ComparePoint::LessThanOrEqual(n) => Box::new(move |a| a <= n),
+            ComparePoint::GreaterThanOrEqual(n) => Box::new(move |a| a >= n),
+        }
     }
 }
 
