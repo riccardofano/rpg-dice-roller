@@ -89,6 +89,12 @@ impl DiceRolls {
             Modifier::TargetFailure(compare_point) => {
                 Self::apply_target_failure(rolls_info, compare_point)
             }
+            Modifier::CriticalSuccess(compare_point) => {
+                Self::apply_critical_success(dice, rolls_info, compare_point)
+            }
+            Modifier::CriticalFailure(compare_point) => {
+                Self::apply_critical_failure(dice, rolls_info, compare_point)
+            }
             _ => todo!(),
         }
     }
@@ -259,6 +265,41 @@ impl DiceRolls {
                 .set_modifier_flag(ModifierFlags::TargetFailure as u8);
         }
     }
+
+    fn apply_critical_success(
+        dice: &Dice,
+        rolls_info: &mut RollsInfo,
+        compare_point: Option<ComparePoint>,
+    ) {
+        let is_critical_success = match compare_point {
+            Some(cmp) => cmp.compare_fn(),
+            None => Box::new(|a| a == dice.max_value()),
+        };
+
+        if is_critical_success(rolls_info.current.value) {
+            rolls_info
+                .current
+                .set_modifier_flag(ModifierFlags::CriticalSuccess as u8);
+        }
+    }
+
+    fn apply_critical_failure(
+        dice: &Dice,
+        rolls_info: &mut RollsInfo,
+        compare_point: Option<ComparePoint>,
+    ) {
+        let is_critical_fail = match compare_point {
+            Some(cmp) => cmp.compare_fn(),
+            None => Box::new(|a| a == dice.min_value()),
+        };
+
+        if is_critical_fail(rolls_info.current.value) {
+            rolls_info
+                .current
+                .set_modifier_flag(ModifierFlags::CriticalFailure as u8);
+        }
+    }
+
 }
 
 impl Dice {
