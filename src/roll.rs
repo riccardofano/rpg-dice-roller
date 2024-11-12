@@ -97,7 +97,7 @@ impl DiceRolls {
             }
             Modifier::Keep(keep_kind, amount) => Self::apply_keep(rolls_info, keep_kind, amount),
             Modifier::Drop(keep_kind, amount) => Self::apply_drop(rolls_info, keep_kind, amount),
-            _ => todo!(),
+            Modifier::Sort(sort_kind) => Self::apply_sort(rolls_info, sort_kind),
         }
     }
 
@@ -334,6 +334,12 @@ impl DiceRolls {
         }
     }
 
+    fn apply_sort(rolls_info: &mut RollsInfo, sort_kind: crate::parse::SortKind) {
+        match sort_kind {
+            crate::parse::SortKind::Ascending => rolls_info.all.sort(),
+            crate::parse::SortKind::Descending => rolls_info.all.sort_by(|a, b| b.cmp(a)),
+        }
+    }
 }
 
 impl Dice {
