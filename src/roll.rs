@@ -278,7 +278,6 @@ impl Roll {
     }
 }
 
-<<<<<<< HEAD
 impl ComparePoint {
     fn compare_fn(self) -> Box<dyn Fn(i32) -> bool> {
         match self {
@@ -289,7 +288,9 @@ impl ComparePoint {
             ComparePoint::LessThanOrEqual(n) => Box::new(move |a| a <= n),
             ComparePoint::GreaterThanOrEqual(n) => Box::new(move |a| a >= n),
         }
-=======
+    }
+}
+
 impl PartialEq for Roll {
     fn eq(&self, other: &Self) -> bool {
         self.value == other.value
@@ -304,7 +305,6 @@ impl Ord for Roll {
 impl PartialOrd for Roll {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
->>>>>>> 8148225 (Implement unique modifiers)
     }
 }
 
