@@ -294,7 +294,7 @@ fn apply_keep(rolls_info: &mut RollsInfo, keep_kind: KeepKind, amount: u32) {
     let mut indices: Vec<usize> = (0..rolls_info.all.len()).collect();
     match keep_kind {
         KeepKind::Highest => {
-            indices.sort_by(|&ia, &ib| rolls_info.all[ia].value.cmp(&rolls_info.all[ib].value))
+            indices.sort_by(|&ia, &ib| rolls_info.all[ib].value.cmp(&rolls_info.all[ia].value))
         }
         KeepKind::Lowest => {
             indices.sort_by(|&ia, &ib| rolls_info.all[ia].value.cmp(&rolls_info.all[ib].value))
@@ -310,7 +310,7 @@ fn apply_drop(rolls_info: &mut RollsInfo, keep_kind: KeepKind, amount: u32) {
     let mut indices: Vec<usize> = (0..rolls_info.all.len()).collect();
     match keep_kind {
         KeepKind::Highest => {
-            indices.sort_by(|&ia, &ib| rolls_info.all[ia].value.cmp(&rolls_info.all[ib].value))
+            indices.sort_by(|&ia, &ib| rolls_info.all[ib].value.cmp(&rolls_info.all[ia].value))
         }
         KeepKind::Lowest => {
             indices.sort_by(|&ia, &ib| rolls_info.all[ia].value.cmp(&rolls_info.all[ib].value))
