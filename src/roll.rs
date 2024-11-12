@@ -83,6 +83,12 @@ impl DiceRolls {
             Modifier::Unique(once, compare_point) => {
                 Self::apply_unique(dice, rolls_info, rng, once, compare_point)
             }
+            Modifier::TargetSuccess(compare_point) => {
+                Self::apply_target_success(rolls_info, compare_point)
+            }
+            Modifier::TargetFailure(compare_point) => {
+                Self::apply_target_failure(rolls_info, compare_point)
+            }
             _ => todo!(),
         }
     }
@@ -231,6 +237,26 @@ impl DiceRolls {
 
             rolls_info.current.set_modifier_flag(modifier_flag as u8);
             rolls_info.current.value = dice.roll(rng.gen());
+        }
+    }
+
+    fn apply_target_success(rolls_info: &mut RollsInfo, compare_point: ComparePoint) {
+        let cmp_fn = compare_point.compare_fn();
+
+        if cmp_fn(rolls_info.current.value) {
+            rolls_info
+                .current
+                .set_modifier_flag(ModifierFlags::TargetSuccess as u8);
+        }
+    }
+
+    fn apply_target_failure(rolls_info: &mut RollsInfo, compare_point: ComparePoint) {
+        let cmp_fn = compare_point.compare_fn();
+
+        if cmp_fn(rolls_info.current.value) {
+            rolls_info
+                .current
+                .set_modifier_flag(ModifierFlags::TargetFailure as u8);
         }
     }
 }
