@@ -1,4 +1,5 @@
 use rand::Rng;
+use std::fmt::Display;
 
 use crate::parse::{ComparePoint, Dice, DieKind, ExplodingKind, KeepKind, Modifier};
 
@@ -23,6 +24,10 @@ enum ModifierFlags {
     CriticalSuccess,
     CriticalFailure,
 }
+
+const MODIFER_MOTATION: [&str; 16] = [
+    "^", "v", "!", "!p", "!!", "!!p", "r", "ro", "u", "uo", "d", "d", "*", "_", "**", "__",
+];
 
 #[derive(Debug, Clone, Copy)]
 struct Roll {
@@ -342,6 +347,20 @@ impl DiceRolls {
     }
 }
 
+impl Display for DiceRolls {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "[{}]",
+            self.rolls
+                .iter()
+                .map(|r| r.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+}
+
 impl Dice {
     pub fn roll(&self, random_value: f32) -> i32 {
         match self.kind {
@@ -414,13 +433,42 @@ impl PartialOrd for Roll {
         Some(self.cmp(other))
     }
 }
+impl Display for Roll {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut str = format!("{}", self.value);
+        for (i, notation) in MODIFER_MOTATION.iter().enumerate() {
+            if self.was_modifier_applied(i as u8) {
+                str.push_str(notation);
+
+                if ModifierFlags::Drop as u8 == i as u8 {
+                    // We don't want to apply critical success/failure on dropped rolls
+                    break;
+                }
+            }
+        }
+        write!(f, "{}", str)
+    }
+}
 
 #[cfg(test)]
 mod tests {
+    use rand::{rngs::StdRng, SeedableRng};
+
     use super::*;
 
     use crate::parse::SortKind;
 
     #[test]
-    fn test_rolling() {}
+    fn test_rolling() {
+        let dice = Dice {
+            quantity: 3,
+            kind: DieKind::Standard(6),
+            modifiers: vec![Modifier::Max(3)],
+        };
+
+        let rng = StdRng::seed_from_u64(1);
+        let res = DiceRolls::roll_all(dice, rng);
+
+        assert_eq!(res.to_string(), "[3v, 3v, 3v]")
+    }
 }
