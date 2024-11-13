@@ -4,6 +4,7 @@ use std::fmt::Display;
 use crate::parse::{ComparePoint, Dice, DieKind, ExplodingKind, KeepKind, Modifier};
 
 const MAX_ITERATIONS: usize = 1000;
+const END_MODIFIER_CUTOFF: u8 = 9; // Everything after Modifier::Keep should be done after the rolls
 
 #[derive(Debug, Clone, Copy)]
 #[repr(usize)]
@@ -47,15 +48,28 @@ impl Dice {
             current: Roll::new(0),
         };
 
+        let first_post_roll_modifier = self
+            .modifiers
+            .iter()
+            .position(|m| m.discriminant() >= END_MODIFIER_CUTOFF)
+            .unwrap_or_else(|| self.modifiers.len() - 1);
+        let (roll_modifiers, post_modifiers) = self.modifiers.split_at(first_post_roll_modifier);
+
+        dbg!(&roll_modifiers, post_modifiers);
+
         for _ in 0..self.quantity {
             rolls_info.current = Roll::new(self.roll(rng.gen()));
 
-            for modifier in &self.modifiers {
+            for modifier in roll_modifiers {
                 // TODO: Keep/Drop/Sort should be applied last
-                apply_modifier(&self, *modifier, &mut rolls_info, &mut rng);
+                apply_modifier(self, *modifier, &mut rolls_info, &mut rng);
             }
 
             rolls_info.all.push(rolls_info.current);
+        }
+
+        for modifier in post_modifiers {
+            apply_modifier(self, *modifier, &mut rolls_info, &mut rng);
         }
 
         rolls_info.all
@@ -433,13 +447,13 @@ impl ComparePoint {
 mod tests {
     use rand::{rngs::StdRng, SeedableRng};
 
+    use super::Modifier::*;
     use super::*;
-
-    use crate::parse::SortKind;
 
     fn values(rolls: &[Roll]) -> Vec<i32> {
         rolls.iter().map(|r| r.value).collect()
     }
+
     fn five_d6(modifiers: Vec<Modifier>) -> Dice {
         Dice {
             quantity: 5,
@@ -450,10 +464,27 @@ mod tests {
 
     #[test]
     fn test_rolling() {
-        let dice = five_d6(vec![Modifier::Min(3)]);
-        let rng = StdRng::seed_from_u64(1);
-        let res = dice.roll_all(rng);
+        let dice = five_d6(vec![Modifier::Min(3), Modifier::Keep(KeepKind::Highest, 2)]);
+        let rolls = dice.roll_all(StdRng::seed_from_u64(1));
 
-        assert_eq!(to_notations(&res), "[3v, 3v, 3v]")
+        assert_eq!(to_notations(&rolls), "[5, 6, 5d, 5d, 2d]");
+    }
+
+    #[test]
+    fn test_modifier_min() {
+        let mut roll = Roll::new(2);
+        apply_min(3, &mut roll);
+
+        assert_eq!(roll.value, 3);
+        assert!(roll.was_modifier_applied(ModifierFlags::Min as u8))
+    }
+
+    #[test]
+    fn test_modifier_min_not_applied() {
+        let mut roll = Roll::new(4);
+        apply_min(3, &mut roll);
+
+        assert_eq!(roll.value, 4);
+        assert!(!roll.was_modifier_applied(ModifierFlags::Min as u8))
     }
 }
