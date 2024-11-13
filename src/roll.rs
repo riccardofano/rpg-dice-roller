@@ -55,8 +55,6 @@ impl Dice {
             .unwrap_or_else(|| self.modifiers.len() - 1);
         let (roll_modifiers, post_modifiers) = self.modifiers.split_at(first_post_roll_modifier);
 
-        dbg!(&roll_modifiers, post_modifiers);
-
         for _ in 0..self.quantity {
             rolls_info.current = Roll::new(self.roll(rng.gen()));
 
@@ -226,7 +224,7 @@ fn apply_unique(
     once: bool,
     compare_point: Option<ComparePoint>,
 ) {
-    let passes_comparison: Box<dyn Fn(i32) -> bool> = match compare_point {
+    let should_reroll: Box<dyn Fn(i32) -> bool> = match compare_point {
         Some(cmp) => cmp.compare_fn(),
         None => Box::new(|_| true),
     };
@@ -238,8 +236,11 @@ fn apply_unique(
     };
 
     for _ in 0..iterations {
-        if passes_comparison(rolls_info.current.value)
-            && !rolls_info.all.contains(&rolls_info.current)
+        if !should_reroll(rolls_info.current.value)
+            || !rolls_info
+                .all
+                .iter()
+                .any(|r| r.value == rolls_info.current.value)
         {
             break;
         }
@@ -849,5 +850,155 @@ mod tests {
         assert!(!rolls_info
             .current
             .was_modifier_applied(ModifierFlags::ReRollOnce as u8));
+    }
+
+    #[test]
+    fn test_modifier_unique() {
+        let rolls = vec![Roll::new(5), Roll::new(6)];
+        let mut rolls_info = RollsInfo {
+            all: rolls,
+            current: Roll::new(5),
+        };
+
+        apply_unique(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            false,
+            None,
+        );
+
+        assert_eq!(rolls_info.current.value, 2);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::Unique as u8));
+    }
+
+    #[test]
+    fn test_modifier_unique_compare_point() {
+        let rolls = vec![Roll::new(5), Roll::new(4)];
+        let mut rolls_info = RollsInfo {
+            all: rolls,
+            current: Roll::new(5),
+        };
+
+        apply_unique(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            false,
+            Some(ComparePoint::Equal(5)),
+        );
+
+        assert_eq!(rolls_info.current.value, 6);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::Unique as u8));
+    }
+
+    #[test]
+    fn test_modifier_unique_compare_point_not_applied() {
+        let rolls = vec![Roll::new(3), Roll::new(4)];
+        let mut rolls_info = RollsInfo {
+            all: rolls,
+            current: Roll::new(5),
+        };
+
+        apply_unique(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            false,
+            Some(ComparePoint::Equal(6)),
+        );
+
+        assert_eq!(rolls_info.current.value, 5);
+        assert!(!rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::Unique as u8));
+    }
+
+    #[test]
+    fn test_modifier_unique_compare_point_not_applied_because_unique() {
+        let rolls = vec![Roll::new(3), Roll::new(4)];
+        let mut rolls_info = RollsInfo {
+            all: rolls,
+            current: Roll::new(5),
+        };
+
+        apply_unique(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            false,
+            Some(ComparePoint::Equal(5)),
+        );
+
+        assert_eq!(rolls_info.current.value, 5);
+        assert!(!rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::Unique as u8));
+    }
+
+    #[test]
+    fn test_modifier_unique_once() {
+        let rolls = vec![Roll::new(5), Roll::new(6)];
+        let mut rolls_info = RollsInfo {
+            all: rolls,
+            current: Roll::new(5),
+        };
+
+        apply_unique(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            true,
+            None,
+        );
+
+        assert_eq!(rolls_info.current.value, 5);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::UniqueOnce as u8));
+    }
+
+    #[test]
+    fn test_modifier_unique_once_compare_point() {
+        let rolls = vec![Roll::new(5), Roll::new(6)];
+        let mut rolls_info = RollsInfo {
+            all: rolls,
+            current: Roll::new(5),
+        };
+
+        apply_unique(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            true,
+            Some(ComparePoint::LessThanOrEqual(5)),
+        );
+
+        assert_eq!(rolls_info.current.value, 5);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::UniqueOnce as u8));
+    }
+
+    #[test]
+    fn test_modifier_unique_once_compare_point_not_applied() {
+        let mut rolls_info = empty_rolls(Roll::new(2));
+
+        apply_unique(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            true,
+            Some(ComparePoint::Equal(4)),
+        );
+
+        assert_eq!(rolls_info.current.value, 2);
+        assert!(!rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::UniqueOnce as u8));
     }
 }
