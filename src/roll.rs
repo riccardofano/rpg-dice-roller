@@ -3,7 +3,7 @@ use std::fmt::Display;
 
 use crate::parse::{ComparePoint, Dice, DieKind, ExplodingKind, KeepKind, Modifier};
 
-const MAX_ITERATIONS: usize = 1000;
+const MAX_ITERATIONS: usize = 1001;
 const END_MODIFIER_CUTOFF: u8 = 9; // Everything after Modifier::Keep should be done after the rolls
 
 #[derive(Debug, Clone, Copy)]
@@ -131,7 +131,7 @@ fn apply_exploding(
 
     match exploding_kind {
         ExplodingKind::Standard => {
-            for _ in 0..MAX_ITERATIONS + 1 {
+            for _ in 0..MAX_ITERATIONS {
                 if !should_explode(rolls_info.current.value) {
                     break;
                 }
@@ -146,7 +146,7 @@ fn apply_exploding(
             }
         }
         ExplodingKind::Penetrating => {
-            for _ in 0..MAX_ITERATIONS + 1 {
+            for _ in 0..MAX_ITERATIONS {
                 if !should_explode(rolls_info.current.value) {
                     break;
                 }
@@ -163,7 +163,7 @@ fn apply_exploding(
         ExplodingKind::Compounding => {
             let mut last_roll_value = rolls_info.current.value;
 
-            for _ in 0..MAX_ITERATIONS + 1 {
+            for _ in 0..MAX_ITERATIONS {
                 if !should_explode(last_roll_value) {
                     break;
                 }
@@ -178,7 +178,7 @@ fn apply_exploding(
         ExplodingKind::PenetratingCompounding => {
             let mut last_roll_value = rolls_info.current.value;
 
-            for _ in 0..MAX_ITERATIONS + 1 {
+            for _ in 0..MAX_ITERATIONS {
                 if !should_explode(last_roll_value) {
                     break;
                 }
@@ -462,10 +462,23 @@ mod tests {
         }
     }
 
+    // NOTE: First 20 rolls with rng seed set to 1
+    // [5, 6, 5, 5, 2, 3, 2, 2, 5, 2, 4, 6, 5, 3, 6, 5, 1, 4, 1, 3]
+    fn test_rng() -> StdRng {
+        StdRng::seed_from_u64(1)
+    }
+
+    fn empty_rolls(current: Roll) -> RollsInfo {
+        RollsInfo {
+            all: vec![],
+            current,
+        }
+    }
+
     #[test]
     fn test_rolling() {
         let dice = five_d6(vec![Modifier::Min(3), Modifier::Keep(KeepKind::Highest, 2)]);
-        let rolls = dice.roll_all(StdRng::seed_from_u64(1));
+        let rolls = dice.roll_all(test_rng());
 
         assert_eq!(to_notations(&rolls), "[5, 6, 5d, 5d, 3^d]");
     }
@@ -505,4 +518,64 @@ mod tests {
         assert_eq!(roll.value, 2);
         assert!(!roll.was_modifier_applied(ModifierFlags::Max as u8))
     }
+
+    // NOTE: *This goes for all modifiers that add extra rolls*
+    // Since the roll gets added to the rolls vec after all the modifiers have been applied
+    // You have to check what's in the rolls + the current roll individually
+    #[test]
+    fn test_modifier_exploding() {
+        let mut rolls_info = empty_rolls(Roll::new(6));
+
+        apply_exploding(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            ExplodingKind::Standard,
+            None,
+        );
+
+        assert_eq!(to_notations(&rolls_info.all), "[6!]");
+        assert_eq!(rolls_info.current.value, 5);
+        assert!(!rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::ExplodingStandard as u8));
+    }
+
+    #[test]
+    fn test_modifier_exploding_compare_point() {
+        let mut rolls_info = empty_rolls(Roll::new(6));
+
+        apply_exploding(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            ExplodingKind::Standard,
+            Some(ComparePoint::GreaterThan(4)),
+        );
+
+        assert_eq!(to_notations(&rolls_info.all), "[6!, 5!, 6!, 5!, 5!]");
+        assert_eq!(rolls_info.current.value, 2);
+        assert!(!rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::ExplodingStandard as u8));
+    }
+
+    #[test]
+    fn test_modifier_exploding_compare_point_not_applied() {
+        let mut rolls_info = empty_rolls(Roll::new(2));
+
+        apply_exploding(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            ExplodingKind::Standard,
+            Some(ComparePoint::GreaterThan(4)),
+        );
+
+        assert_eq!(rolls_info.current.value, 2);
+        assert!(!rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::ExplodingStandard as u8));
+    }
+
 }
