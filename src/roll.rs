@@ -464,6 +464,8 @@ mod tests {
 
     // NOTE: First 20 rolls with rng seed set to 1
     // [5, 6, 5, 5, 2, 3, 2, 2, 5, 2, 4, 6, 5, 3, 6, 5, 1, 4, 1, 3]
+    // Keep in mind that you usually set a roll before those
+
     fn test_rng() -> StdRng {
         StdRng::seed_from_u64(1)
     }
@@ -686,5 +688,59 @@ mod tests {
         assert!(!rolls_info
             .current
             .was_modifier_applied(ModifierFlags::ExplodingCompounding as u8));
+    }
+
+    #[test]
+    fn test_modifier_exploding_penetrating_compounding() {
+        let mut rolls_info = empty_rolls(Roll::new(6));
+
+        apply_exploding(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            ExplodingKind::PenetratingCompounding,
+            None,
+        );
+
+        assert_eq!(rolls_info.current.value, 10);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::ExplodingPenetratingCompounding as u8));
+    }
+
+    #[test]
+    fn test_modifier_exploding_penetrating_compounding_compare_point() {
+        let mut rolls_info = empty_rolls(Roll::new(6));
+
+        apply_exploding(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            ExplodingKind::PenetratingCompounding,
+            Some(ComparePoint::GreaterThan(3)),
+        );
+
+        assert_eq!(rolls_info.current.value, 24);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::ExplodingPenetratingCompounding as u8));
+    }
+
+    #[test]
+    fn test_modifier_exploding_penetrating_compounding_compare_point_not_applied() {
+        let mut rolls_info = empty_rolls(Roll::new(5));
+
+        apply_exploding(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            ExplodingKind::PenetratingCompounding,
+            Some(ComparePoint::LessThan(4)),
+        );
+
+        assert_eq!(rolls_info.current.value, 5);
+        assert!(!rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::ExplodingPenetrating as u8));
     }
 }
