@@ -633,4 +633,58 @@ mod tests {
             .current
             .was_modifier_applied(ModifierFlags::ExplodingPenetrating as u8));
     }
+
+    #[test]
+    fn test_modifier_exploding_compounding() {
+        let mut rolls_info = empty_rolls(Roll::new(6));
+
+        apply_exploding(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            ExplodingKind::Compounding,
+            None,
+        );
+
+        assert_eq!(rolls_info.current.value, 11);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::ExplodingCompounding as u8));
+    }
+
+    #[test]
+    fn test_modifier_exploding_compounding_compare_point() {
+        let mut rolls_info = empty_rolls(Roll::new(6));
+
+        apply_exploding(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            ExplodingKind::Compounding,
+            Some(ComparePoint::GreaterThan(4)),
+        );
+
+        assert_eq!(rolls_info.current.value, 29);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::ExplodingCompounding as u8));
+    }
+
+    #[test]
+    fn test_modifier_exploding_compounding_compare_point_not_applied() {
+        let mut rolls_info = empty_rolls(Roll::new(2));
+
+        apply_exploding(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            ExplodingKind::Compounding,
+            Some(ComparePoint::GreaterThan(4)),
+        );
+
+        assert_eq!(rolls_info.current.value, 2);
+        assert!(!rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::ExplodingCompounding as u8));
+    }
 }
