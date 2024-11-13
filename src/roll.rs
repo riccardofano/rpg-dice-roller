@@ -467,7 +467,7 @@ mod tests {
         let dice = five_d6(vec![Modifier::Min(3), Modifier::Keep(KeepKind::Highest, 2)]);
         let rolls = dice.roll_all(StdRng::seed_from_u64(1));
 
-        assert_eq!(to_notations(&rolls), "[5, 6, 5d, 5d, 2d]");
+        assert_eq!(to_notations(&rolls), "[5, 6, 5d, 5d, 3^d]");
     }
 
     #[test]
@@ -486,5 +486,23 @@ mod tests {
 
         assert_eq!(roll.value, 4);
         assert!(!roll.was_modifier_applied(ModifierFlags::Min as u8))
+    }
+
+    #[test]
+    fn test_modifier_max() {
+        let mut roll = Roll::new(4);
+        apply_max(3, &mut roll);
+
+        assert_eq!(roll.value, 3);
+        assert!(roll.was_modifier_applied(ModifierFlags::Max as u8))
+    }
+
+    #[test]
+    fn test_modifier_max_not_applied() {
+        let mut roll = Roll::new(2);
+        apply_max(3, &mut roll);
+
+        assert_eq!(roll.value, 2);
+        assert!(!roll.was_modifier_applied(ModifierFlags::Max as u8))
     }
 }
