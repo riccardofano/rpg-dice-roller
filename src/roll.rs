@@ -201,7 +201,7 @@ fn apply_reroll(
 ) {
     let should_reroll: Box<dyn Fn(i32) -> bool> = match compare_point {
         Some(cmp) => cmp.compare_fn(),
-        None => Box::new(|a| a == dice.max_value()),
+        None => Box::new(|a| a == dice.min_value()),
     };
 
     let (iterations, modifier_flag) = if once {
@@ -209,7 +209,7 @@ fn apply_reroll(
     } else {
         (MAX_ITERATIONS, ModifierFlags::ReRoll)
     };
-    for _ in 0..iterations + 1 {
+    for _ in 0..iterations {
         if !should_reroll(rolls_info.current.value) {
             break;
         }
@@ -741,5 +741,113 @@ mod tests {
         assert!(!rolls_info
             .current
             .was_modifier_applied(ModifierFlags::ExplodingPenetrating as u8));
+    }
+
+    #[test]
+    fn test_modifier_reroll() {
+        let mut rolls_info = empty_rolls(Roll::new(1));
+
+        apply_reroll(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            false,
+            None,
+        );
+
+        assert_eq!(rolls_info.current.value, 5);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::ReRoll as u8));
+    }
+
+    #[test]
+    fn test_modifier_reroll_compare_point() {
+        let mut rolls_info = empty_rolls(Roll::new(4));
+
+        apply_reroll(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            false,
+            Some(ComparePoint::LessThanOrEqual(5)),
+        );
+
+        assert_eq!(rolls_info.current.value, 6);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::ReRoll as u8));
+    }
+
+    #[test]
+    fn test_modifier_reroll_compare_point_not_applied() {
+        let mut rolls_info = empty_rolls(Roll::new(2));
+
+        apply_reroll(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            false,
+            Some(ComparePoint::Equal(4)),
+        );
+
+        assert_eq!(rolls_info.current.value, 2);
+        assert!(!rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::ReRoll as u8));
+    }
+
+    #[test]
+    fn test_modifier_reroll_once() {
+        let mut rolls_info = empty_rolls(Roll::new(1));
+
+        apply_reroll(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            true,
+            None,
+        );
+
+        assert_eq!(rolls_info.current.value, 5);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::ReRollOnce as u8));
+    }
+
+    #[test]
+    fn test_modifier_reroll_once_compare_point() {
+        let mut rolls_info = empty_rolls(Roll::new(4));
+
+        apply_reroll(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            true,
+            Some(ComparePoint::LessThanOrEqual(5)),
+        );
+
+        assert_eq!(rolls_info.current.value, 5);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::ReRollOnce as u8));
+    }
+
+    #[test]
+    fn test_modifier_reroll_once_compare_point_not_applied() {
+        let mut rolls_info = empty_rolls(Roll::new(2));
+
+        apply_reroll(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            &mut test_rng(),
+            true,
+            Some(ComparePoint::Equal(4)),
+        );
+
+        assert_eq!(rolls_info.current.value, 2);
+        assert!(!rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::ReRollOnce as u8));
     }
 }
