@@ -61,7 +61,6 @@ impl Dice {
             rolls_info.current = Roll::new(self.roll(rng.gen()));
 
             for modifier in roll_modifiers {
-                // TODO: Keep/Drop/Sort should be applied last
                 apply_modifier(self, *modifier, &mut rolls_info, &mut rng);
             }
 
