@@ -47,20 +47,29 @@ pub struct RollOutput {
     pub(crate) kind: RollOutputKind,
 }
 
-#[rustfmt::skip]
 impl RollOutput {
+    #[rustfmt::skip]
     pub fn value(self) -> f64 {
+        let iter = self
+            .rolls
+            .iter()
+            .filter(|r| !r.was_modifier_applied(ModifierFlags::Drop as u8));
+
         match self.kind {
-            RollOutputKind::Sum => self.rolls.iter().map(|r| r.value as f64).sum(),
-            RollOutputKind::TargetSuccess => self.rolls.iter().map(|r| {
+            RollOutputKind::Sum => iter.map(|r| r.value as f64).sum(),
+            RollOutputKind::TargetSuccess => iter
+                .map(|r| {
                     let success = r.was_modifier_applied(ModifierFlags::TargetSuccess as u8);
                     if success { 1.0 } else { 0.0 }
-            }).sum(),
-            RollOutputKind::TargetFailure => self.rolls.iter().map(|r| {
-                let success = r.was_modifier_applied(ModifierFlags::TargetSuccess as u8);
-                let failure = r.was_modifier_applied(ModifierFlags::TargetFailure as u8);
-                if success { 1.0 } else if failure { -1.0 } else { 0.0 }
-            }).sum(),
+                })
+                .sum(),
+            RollOutputKind::TargetFailure => iter
+                .map(|r| {
+                    let success = r.was_modifier_applied(ModifierFlags::TargetSuccess as u8);
+                    let failure = r.was_modifier_applied(ModifierFlags::TargetFailure as u8);
+                    if success { 1.0 } else if failure { -1.0 } else { 0.0 }
+                })
+                .sum(),
         }
     }
 }
