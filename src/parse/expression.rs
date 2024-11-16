@@ -201,11 +201,8 @@ mod tests {
 
     #[test]
     fn test_expression() {
-        let input = "(1d6 * 2d10) + 5";
-
-        let result = Expression::parse(input);
-        eprintln!("{:?}", result);
-
-        todo!()
+        let input = "((1 + 3) * 8) + 5";
+        let result = Expression::parse(input).unwrap();
+        assert_eq!(input, result.to_string())
     }
 }
