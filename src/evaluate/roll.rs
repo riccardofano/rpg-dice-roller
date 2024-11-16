@@ -1,7 +1,7 @@
 use rand::Rng;
 use std::fmt::Display;
 
-use crate::parse::{ComparePoint, Dice, DieKind, ExplodingKind, KeepKind, Modifier};
+use crate::parse::{ComparePoint, Dice, DiceKind, ExplodingKind, KeepKind, Modifier};
 
 const MAX_ITERATIONS: usize = 1001;
 const END_MODIFIER_CUTOFF: u8 = 9; // Everything after Modifier::Keep should be done after the rolls
@@ -32,8 +32,8 @@ const MODIFER_MOTATION: [&str; 16] = [
 
 #[derive(Debug, Clone, Copy)]
 pub struct Roll {
-    value: i32,
-    modifier_flags: u32,
+    pub(crate) value: i32,
+    pub(crate) modifier_flags: u32,
 }
 
 struct RollsInfo {
@@ -70,6 +70,30 @@ impl Dice {
         }
 
         rolls_info.all
+    }
+
+    pub fn roll(&self, random_value: f32) -> i32 {
+        match self.kind {
+            DiceKind::Standard(sides) => (random_value * sides as f32).ceil() as i32,
+            DiceKind::Fudge1 => [-1, 0, 0, 0, 0, 1][(random_value * 6_f32).floor() as usize],
+            DiceKind::Fudge2 => (random_value * 3_f32).floor() as i32 - 1,
+        }
+    }
+
+    pub fn max_value(&self) -> i32 {
+        match self.kind {
+            DiceKind::Standard(sides) => sides as i32,
+            DiceKind::Fudge1 => 1,
+            DiceKind::Fudge2 => 1,
+        }
+    }
+
+    pub fn min_value(&self) -> i32 {
+        match self.kind {
+            DiceKind::Standard(_) => 1,
+            DiceKind::Fudge1 => -1,
+            DiceKind::Fudge2 => -1,
+        }
     }
 }
 
@@ -121,15 +145,15 @@ fn apply_exploding(
     exploding_kind: ExplodingKind,
     compare_point: Option<ComparePoint>,
 ) {
-    let should_explode: Box<dyn Fn(i32) -> bool> = match compare_point {
+    let should_explode: Box<dyn Fn(f64) -> bool> = match compare_point {
         Some(cmp) => cmp.compare_fn(),
-        None => Box::new(|a| a == dice.max_value()),
+        None => Box::new(|a| a == dice.max_value().into()),
     };
 
     match exploding_kind {
         ExplodingKind::Standard => {
             for _ in 0..MAX_ITERATIONS {
-                if !should_explode(rolls_info.current.value) {
+                if !should_explode(rolls_info.current.value.into()) {
                     break;
                 }
 
@@ -144,7 +168,7 @@ fn apply_exploding(
         }
         ExplodingKind::Penetrating => {
             for _ in 0..MAX_ITERATIONS {
-                if !should_explode(rolls_info.current.value) {
+                if !should_explode(rolls_info.current.value.into()) {
                     break;
                 }
 
@@ -161,7 +185,7 @@ fn apply_exploding(
             let mut last_roll_value = rolls_info.current.value;
 
             for _ in 0..MAX_ITERATIONS {
-                if !should_explode(last_roll_value) {
+                if !should_explode(last_roll_value.into()) {
                     break;
                 }
 
@@ -176,7 +200,7 @@ fn apply_exploding(
             let mut last_roll_value = rolls_info.current.value;
 
             for _ in 0..MAX_ITERATIONS {
-                if !should_explode(last_roll_value) {
+                if !should_explode(last_roll_value.into()) {
                     break;
                 }
 
@@ -197,9 +221,9 @@ fn apply_reroll(
     once: bool,
     compare_point: Option<ComparePoint>,
 ) {
-    let should_reroll: Box<dyn Fn(i32) -> bool> = match compare_point {
+    let should_reroll: Box<dyn Fn(f64) -> bool> = match compare_point {
         Some(cmp) => cmp.compare_fn(),
-        None => Box::new(|a| a == dice.min_value()),
+        None => Box::new(|a| a == dice.min_value().into()),
     };
 
     let (iterations, modifier_flag) = if once {
@@ -208,7 +232,7 @@ fn apply_reroll(
         (MAX_ITERATIONS, ModifierFlags::ReRoll)
     };
     for _ in 0..iterations {
-        if !should_reroll(rolls_info.current.value) {
+        if !should_reroll(rolls_info.current.value.into()) {
             break;
         }
 
@@ -224,7 +248,7 @@ fn apply_unique(
     once: bool,
     compare_point: Option<ComparePoint>,
 ) {
-    let should_reroll: Box<dyn Fn(i32) -> bool> = match compare_point {
+    let should_reroll: Box<dyn Fn(f64) -> bool> = match compare_point {
         Some(cmp) => cmp.compare_fn(),
         None => Box::new(|_| true),
     };
@@ -236,7 +260,7 @@ fn apply_unique(
     };
 
     for _ in 0..iterations {
-        if !should_reroll(rolls_info.current.value)
+        if !should_reroll(rolls_info.current.value.into())
             || !rolls_info
                 .all
                 .iter()
@@ -253,7 +277,7 @@ fn apply_unique(
 fn apply_target_success(rolls_info: &mut RollsInfo, compare_point: ComparePoint) {
     let cmp_fn = compare_point.compare_fn();
 
-    if cmp_fn(rolls_info.current.value) {
+    if cmp_fn(rolls_info.current.value.into()) {
         rolls_info
             .current
             .set_modifier_flag(ModifierFlags::TargetSuccess as u8);
@@ -263,7 +287,7 @@ fn apply_target_success(rolls_info: &mut RollsInfo, compare_point: ComparePoint)
 fn apply_target_failure(rolls_info: &mut RollsInfo, compare_point: ComparePoint) {
     let cmp_fn = compare_point.compare_fn();
 
-    if cmp_fn(rolls_info.current.value) {
+    if cmp_fn(rolls_info.current.value.into()) {
         rolls_info
             .current
             .set_modifier_flag(ModifierFlags::TargetFailure as u8);
@@ -277,10 +301,10 @@ fn apply_critical_success(
 ) {
     let is_critical_success = match compare_point {
         Some(cmp) => cmp.compare_fn(),
-        None => Box::new(|a| a == dice.max_value()),
+        None => Box::new(|a| a == dice.max_value().into()),
     };
 
-    if is_critical_success(rolls_info.current.value) {
+    if is_critical_success(rolls_info.current.value.into()) {
         rolls_info
             .current
             .set_modifier_flag(ModifierFlags::CriticalSuccess as u8);
@@ -294,10 +318,10 @@ fn apply_critical_failure(
 ) {
     let is_critical_fail = match compare_point {
         Some(cmp) => cmp.compare_fn(),
-        None => Box::new(|a| a == dice.min_value()),
+        None => Box::new(|a| a == dice.min_value().into()),
     };
 
-    if is_critical_fail(rolls_info.current.value) {
+    if is_critical_fail(rolls_info.current.value.into()) {
         rolls_info
             .current
             .set_modifier_flag(ModifierFlags::CriticalFailure as u8);
@@ -340,32 +364,6 @@ fn apply_sort(rolls_info: &mut RollsInfo, sort_kind: crate::parse::SortKind) {
     match sort_kind {
         crate::parse::SortKind::Ascending => rolls_info.all.sort(),
         crate::parse::SortKind::Descending => rolls_info.all.sort_by(|a, b| b.cmp(a)),
-    }
-}
-
-impl Dice {
-    pub fn roll(&self, random_value: f32) -> i32 {
-        match self.kind {
-            DieKind::Standard(sides) => (random_value * sides as f32).ceil() as i32,
-            DieKind::Fudge1 => [-1, 0, 0, 0, 0, 1][(random_value * 6_f32).floor() as usize],
-            DieKind::Fudge2 => (random_value * 3_f32).floor() as i32 - 1,
-        }
-    }
-
-    pub fn max_value(&self) -> i32 {
-        match self.kind {
-            DieKind::Standard(sides) => sides as i32,
-            DieKind::Fudge1 => 1,
-            DieKind::Fudge2 => 1,
-        }
-    }
-
-    pub fn min_value(&self) -> i32 {
-        match self.kind {
-            DieKind::Standard(_) => 1,
-            DieKind::Fudge1 => -1,
-            DieKind::Fudge2 => -1,
-        }
     }
 }
 
@@ -431,7 +429,7 @@ fn to_notations(rolls: &[Roll]) -> String {
 }
 
 impl ComparePoint {
-    fn compare_fn(self) -> Box<dyn Fn(i32) -> bool> {
+    fn compare_fn(self) -> Box<dyn Fn(f64) -> bool> {
         match self {
             ComparePoint::Equal(n) => Box::new(move |a| a == n),
             ComparePoint::NotEqual(n) => Box::new(move |a| a != n),
@@ -447,7 +445,8 @@ impl ComparePoint {
 mod tests {
     use rand::{rngs::StdRng, SeedableRng};
 
-    use super::Modifier::*;
+    use crate::parse::SortKind;
+
     use super::*;
 
     fn values(rolls: &[Roll]) -> Vec<i32> {
@@ -457,7 +456,7 @@ mod tests {
     fn five_d6(modifiers: Vec<Modifier>) -> Dice {
         Dice {
             quantity: 5,
-            kind: DieKind::Standard(6),
+            kind: DiceKind::Standard(6),
             modifiers,
         }
     }
@@ -552,7 +551,7 @@ mod tests {
             &mut rolls_info,
             &mut test_rng(),
             ExplodingKind::Standard,
-            Some(ComparePoint::GreaterThan(4)),
+            Some(ComparePoint::GreaterThan(4.0)),
         );
 
         assert_eq!(to_notations(&rolls_info.all), "[6!, 5!, 6!, 5!, 5!]");
@@ -571,7 +570,7 @@ mod tests {
             &mut rolls_info,
             &mut test_rng(),
             ExplodingKind::Standard,
-            Some(ComparePoint::GreaterThan(4)),
+            Some(ComparePoint::GreaterThan(4.0)),
         );
 
         assert_eq!(rolls_info.current.value, 2);
@@ -608,7 +607,7 @@ mod tests {
             &mut rolls_info,
             &mut test_rng(),
             ExplodingKind::Penetrating,
-            Some(ComparePoint::GreaterThan(4)),
+            Some(ComparePoint::GreaterThan(4.0)),
         );
 
         assert_eq!(to_notations(&rolls_info.all), "[6!p]");
@@ -627,7 +626,7 @@ mod tests {
             &mut rolls_info,
             &mut test_rng(),
             ExplodingKind::Penetrating,
-            Some(ComparePoint::GreaterThan(4)),
+            Some(ComparePoint::GreaterThan(4.0)),
         );
 
         assert_eq!(rolls_info.current.value, 2);
@@ -663,7 +662,7 @@ mod tests {
             &mut rolls_info,
             &mut test_rng(),
             ExplodingKind::Compounding,
-            Some(ComparePoint::GreaterThan(4)),
+            Some(ComparePoint::GreaterThan(4.0)),
         );
 
         assert_eq!(rolls_info.current.value, 29);
@@ -681,7 +680,7 @@ mod tests {
             &mut rolls_info,
             &mut test_rng(),
             ExplodingKind::Compounding,
-            Some(ComparePoint::GreaterThan(4)),
+            Some(ComparePoint::GreaterThan(4.0)),
         );
 
         assert_eq!(rolls_info.current.value, 2);
@@ -717,7 +716,7 @@ mod tests {
             &mut rolls_info,
             &mut test_rng(),
             ExplodingKind::PenetratingCompounding,
-            Some(ComparePoint::GreaterThan(3)),
+            Some(ComparePoint::GreaterThan(3.0)),
         );
 
         assert_eq!(rolls_info.current.value, 24);
@@ -735,7 +734,7 @@ mod tests {
             &mut rolls_info,
             &mut test_rng(),
             ExplodingKind::PenetratingCompounding,
-            Some(ComparePoint::LessThan(4)),
+            Some(ComparePoint::LessThan(4.0)),
         );
 
         assert_eq!(rolls_info.current.value, 5);
@@ -771,7 +770,7 @@ mod tests {
             &mut rolls_info,
             &mut test_rng(),
             false,
-            Some(ComparePoint::LessThanOrEqual(5)),
+            Some(ComparePoint::LessThanOrEqual(5.0)),
         );
 
         assert_eq!(rolls_info.current.value, 6);
@@ -789,7 +788,7 @@ mod tests {
             &mut rolls_info,
             &mut test_rng(),
             false,
-            Some(ComparePoint::Equal(4)),
+            Some(ComparePoint::Equal(4.0)),
         );
 
         assert_eq!(rolls_info.current.value, 2);
@@ -825,7 +824,7 @@ mod tests {
             &mut rolls_info,
             &mut test_rng(),
             true,
-            Some(ComparePoint::LessThanOrEqual(5)),
+            Some(ComparePoint::LessThanOrEqual(5.0)),
         );
 
         assert_eq!(rolls_info.current.value, 5);
@@ -843,7 +842,7 @@ mod tests {
             &mut rolls_info,
             &mut test_rng(),
             true,
-            Some(ComparePoint::Equal(4)),
+            Some(ComparePoint::Equal(4.0)),
         );
 
         assert_eq!(rolls_info.current.value, 2);
@@ -887,7 +886,7 @@ mod tests {
             &mut rolls_info,
             &mut test_rng(),
             false,
-            Some(ComparePoint::Equal(5)),
+            Some(ComparePoint::Equal(5.0)),
         );
 
         assert_eq!(rolls_info.current.value, 6);
@@ -909,7 +908,7 @@ mod tests {
             &mut rolls_info,
             &mut test_rng(),
             false,
-            Some(ComparePoint::Equal(6)),
+            Some(ComparePoint::Equal(6.0)),
         );
 
         assert_eq!(rolls_info.current.value, 5);
@@ -931,7 +930,7 @@ mod tests {
             &mut rolls_info,
             &mut test_rng(),
             false,
-            Some(ComparePoint::Equal(5)),
+            Some(ComparePoint::Equal(5.0)),
         );
 
         assert_eq!(rolls_info.current.value, 5);
@@ -975,7 +974,7 @@ mod tests {
             &mut rolls_info,
             &mut test_rng(),
             true,
-            Some(ComparePoint::LessThanOrEqual(5)),
+            Some(ComparePoint::LessThanOrEqual(5.0)),
         );
 
         assert_eq!(rolls_info.current.value, 5);
@@ -993,12 +992,234 @@ mod tests {
             &mut rolls_info,
             &mut test_rng(),
             true,
-            Some(ComparePoint::Equal(4)),
+            Some(ComparePoint::Equal(4.0)),
         );
 
         assert_eq!(rolls_info.current.value, 2);
         assert!(!rolls_info
             .current
             .was_modifier_applied(ModifierFlags::UniqueOnce as u8));
+    }
+
+    #[test]
+    fn test_modifier_target_success() {
+        let mut rolls_info = empty_rolls(Roll::new(2));
+        apply_target_success(&mut rolls_info, ComparePoint::Equal(2.0));
+
+        assert_eq!(rolls_info.current.value, 2);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::TargetSuccess as u8))
+    }
+
+    #[test]
+    fn test_modifier_target_success_not_applied() {
+        let mut rolls_info = empty_rolls(Roll::new(2));
+        apply_target_success(&mut rolls_info, ComparePoint::Equal(3.0));
+
+        assert_eq!(rolls_info.current.value, 2);
+        assert!(!rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::TargetSuccess as u8))
+    }
+
+    #[test]
+    fn test_modifier_target_failure() {
+        let mut rolls_info = empty_rolls(Roll::new(1));
+        apply_target_failure(&mut rolls_info, ComparePoint::LessThanOrEqual(2.0));
+
+        assert_eq!(rolls_info.current.value, 1);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::TargetFailure as u8))
+    }
+
+    #[test]
+    fn test_modifier_target_failure_not_applied() {
+        let mut rolls_info = empty_rolls(Roll::new(4));
+        apply_target_failure(&mut rolls_info, ComparePoint::GreaterThan(5.0));
+
+        assert_eq!(rolls_info.current.value, 4);
+        assert!(!rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::TargetFailure as u8))
+    }
+
+    #[test]
+    fn test_modifier_critical_success() {
+        let mut rolls_info = empty_rolls(Roll::new(6));
+        apply_critical_success(&five_d6(vec![]), &mut rolls_info, None);
+
+        assert_eq!(rolls_info.current.value, 6);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::CriticalSuccess as u8))
+    }
+
+    #[test]
+    fn test_modifier_critical_success_compare_point() {
+        let mut rolls_info = empty_rolls(Roll::new(2));
+        apply_critical_success(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            Some(ComparePoint::Equal(2.0)),
+        );
+
+        assert_eq!(rolls_info.current.value, 2);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::CriticalSuccess as u8))
+    }
+
+    #[test]
+    fn test_modifier_critical_success_not_applied() {
+        let mut rolls_info = empty_rolls(Roll::new(2));
+        apply_critical_success(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            Some(ComparePoint::Equal(3.0)),
+        );
+
+        assert_eq!(rolls_info.current.value, 2);
+        assert!(!rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::CriticalSuccess as u8))
+    }
+
+    #[test]
+    fn test_modifier_critical_failure() {
+        let mut rolls_info = empty_rolls(Roll::new(1));
+        apply_critical_failure(&five_d6(vec![]), &mut rolls_info, None);
+
+        assert_eq!(rolls_info.current.value, 1);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::CriticalFailure as u8))
+    }
+
+    #[test]
+    fn test_modifier_critical_failure_compare_point() {
+        let mut rolls_info = empty_rolls(Roll::new(1));
+        apply_critical_failure(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            Some(ComparePoint::LessThanOrEqual(2.0)),
+        );
+
+        assert_eq!(rolls_info.current.value, 1);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::CriticalFailure as u8))
+    }
+
+    #[test]
+    fn test_modifier_critical_failure_not_applied() {
+        let mut rolls_info = empty_rolls(Roll::new(4));
+        apply_critical_failure(
+            &five_d6(vec![]),
+            &mut rolls_info,
+            Some(ComparePoint::GreaterThan(5.0)),
+        );
+
+        assert_eq!(rolls_info.current.value, 4);
+        assert!(!rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::CriticalFailure as u8))
+    }
+
+    #[test]
+    fn test_modifier_keep() {
+        let mut rolls_info = RollsInfo {
+            all: vec![Roll::new(1), Roll::new(2), Roll::new(3), Roll::new(4)],
+            current: Roll::new(1),
+        };
+
+        apply_keep(&mut rolls_info, KeepKind::Highest, 2);
+
+        assert_eq!(to_notations(&rolls_info.all), "[1d, 2d, 3, 4]");
+    }
+
+    #[test]
+    fn test_modifier_keep_not_ordered() {
+        let mut rolls_info = RollsInfo {
+            all: vec![Roll::new(2), Roll::new(3), Roll::new(4), Roll::new(1)],
+            current: Roll::new(1),
+        };
+
+        apply_keep(&mut rolls_info, KeepKind::Highest, 2);
+
+        assert_eq!(to_notations(&rolls_info.all), "[2d, 3, 4, 1d]");
+    }
+
+    #[test]
+    fn test_modifier_keep_lowest_not_ordered() {
+        let mut rolls_info = RollsInfo {
+            all: vec![Roll::new(2), Roll::new(3), Roll::new(4), Roll::new(1)],
+            current: Roll::new(1),
+        };
+
+        apply_keep(&mut rolls_info, KeepKind::Lowest, 2);
+
+        assert_eq!(to_notations(&rolls_info.all), "[2, 3d, 4d, 1]");
+    }
+
+    #[test]
+    fn test_modifier_drop() {
+        let mut rolls_info = RollsInfo {
+            all: vec![Roll::new(1), Roll::new(2), Roll::new(3), Roll::new(4)],
+            current: Roll::new(1),
+        };
+
+        apply_drop(&mut rolls_info, KeepKind::Highest, 3);
+
+        assert_eq!(to_notations(&rolls_info.all), "[1, 2d, 3d, 4d]");
+    }
+
+    #[test]
+    fn test_modifier_drop_not_ordered() {
+        let mut rolls_info = RollsInfo {
+            all: vec![Roll::new(2), Roll::new(3), Roll::new(4), Roll::new(1)],
+            current: Roll::new(1),
+        };
+
+        apply_drop(&mut rolls_info, KeepKind::Highest, 1);
+
+        assert_eq!(to_notations(&rolls_info.all), "[2, 3, 4d, 1]");
+    }
+
+    #[test]
+    fn test_modifier_drop_lowest_not_ordered() {
+        let mut rolls_info = RollsInfo {
+            all: vec![Roll::new(2), Roll::new(3), Roll::new(4), Roll::new(1)],
+            current: Roll::new(1),
+        };
+
+        apply_drop(&mut rolls_info, KeepKind::Lowest, 1);
+
+        assert_eq!(to_notations(&rolls_info.all), "[2, 3, 4, 1d]");
+    }
+
+    #[test]
+    fn test_modifier_sort_ascending() {
+        let mut rolls_info = RollsInfo {
+            all: vec![Roll::new(2), Roll::new(3), Roll::new(4), Roll::new(1)],
+            current: Roll::new(1),
+        };
+
+        apply_sort(&mut rolls_info, SortKind::Ascending);
+
+        assert_eq!(values(&rolls_info.all), [1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn test_modifier_sort_descending() {
+        let mut rolls_info = RollsInfo {
+            all: vec![Roll::new(2), Roll::new(3), Roll::new(4), Roll::new(1)],
+            current: Roll::new(1),
+        };
+
+        apply_sort(&mut rolls_info, SortKind::Descending);
+
+        assert_eq!(values(&rolls_info.all), [4, 3, 2, 1]);
     }
 }

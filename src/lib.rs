@@ -1,2 +1,4 @@
+mod evaluate;
 mod parse;
-mod roll;
+
+pub use parse::Dice;
