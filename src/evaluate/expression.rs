@@ -2,11 +2,13 @@ use std::f64::consts::E;
 
 use crate::parse::{Expression, MathFn1, MathFn2, Operator};
 
+use super::roll::to_notations;
+
 impl Expression {
     pub fn evaluate(self) -> f64 {
         match self {
             Expression::Value(float) => float,
-            Expression::Dice(qty, val, mods) => todo!(),
+            Expression::DiceRolls(output) => output.value(),
             Expression::Parens(expr) => expr.evaluate(),
             Expression::Group(_) => todo!(),
             Expression::Infix(op, lhs, rhs) => op.evaluate(*lhs, *rhs),
@@ -65,12 +67,13 @@ impl std::fmt::Display for Expression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Expression::Value(val) => write!(f, "{val}"),
-            Expression::Dice(_, _, _) => todo!(),
+            Expression::DiceRolls(output) => write!(f, "{}", to_notations(&output.rolls)),
             Expression::Parens(expr) => write!(f, "({expr})"),
             Expression::Group(_) => todo!(),
             Expression::Infix(op, expr1, expr2) => write!(f, "{expr1} {op} {expr2}"),
-            Expression::Fn1(func, arg) => write!(f, "{func}({arg})"),
-            Expression::Fn2(func, arg1, arg2) => write!(f, "{func}({arg1}, {arg2})"),
+            // no parens on the function call because there's always a parens expression following the function call
+            Expression::Fn1(func, arg) => write!(f, "{func}{arg}"),
+            Expression::Fn2(func, arg1, arg2) => write!(f, "{func}{arg1}, {arg2}"),
         }
     }
 }
@@ -98,7 +101,7 @@ impl std::fmt::Display for MathFn1 {
             MathFn1::Round => "round",
             MathFn1::Sign => "sign",
             MathFn1::Sqrt => "sqrt",
-            MathFn1::Log => "log",
+            MathFn1::Log => "ln",
             MathFn1::Exp => "exp",
             MathFn1::Sin => "sin",
             MathFn1::Cos => "cos",

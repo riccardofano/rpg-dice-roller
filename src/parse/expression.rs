@@ -1,24 +1,24 @@
 use winnow::{
     ascii::{dec_uint, multispace0},
-    combinator::{
-        alt, cut_err, delimited, dispatch, empty, fail, not, opt, peek, preceded, repeat,
-        separated_pair,
-    },
-    token::{any, one_of},
+    combinator::{alt, cut_err, delimited, dispatch, empty, fail, repeat, separated_pair},
+    token::any,
     PResult, Parser,
 };
 
-use super::{parse_dice, parse_modifier, Dice, Modifier};
+use crate::evaluate::roll::RollOutput;
+
+use super::{parse_dice_kind, parse_modifier, Dice, DiceKind};
 
 #[derive(Debug, Clone)]
 pub enum Expression {
     Value(f64),
-    Dice(Box<Expression>, Box<Expression>, Vec<Modifier>),
+    // Dice(Box<Expression>, Box<Expression>, Vec<Modifier>),
     Parens(Box<Expression>),
     Group(Box<Expression>),
     Infix(Operator, Box<Expression>, Box<Expression>),
     Fn1(MathFn1, Box<Expression>),
     Fn2(MathFn2, Box<Expression>, Box<Expression>),
+    DiceRolls(RollOutput),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -114,6 +114,20 @@ fn parse_factor_no_dice(input: &mut &str) -> PResult<Expression> {
     .parse_next(input)
 }
 
+fn parse_factor_dice_kind(input: &mut &str) -> PResult<DiceKind> {
+    delimited(
+        multispace0,
+        alt((
+            parse_dice_kind,
+            parse_fn2.map(|f| DiceKind::Standard(f.evaluate().round() as u32)),
+            parse_fn1.map(|f| DiceKind::Standard(f.evaluate().round() as u32)),
+            parse_parens.map(|expr| DiceKind::Standard(expr.evaluate().round() as u32)),
+        )),
+        multispace0,
+    )
+    .parse_next(input)
+}
+
 fn parse_parens(input: &mut &str) -> PResult<Expression> {
     delimited('(', parse_expr, ')')
         .map(|e| Expression::Parens(Box::new(e)))
@@ -149,6 +163,7 @@ fn parse_fn1_name(input: &mut &str) -> PResult<MathFn1> {
         "sign".value(MathFn1::Sign),
         "sqrt".value(MathFn1::Sqrt),
         "log".value(MathFn1::Log),
+        "ln".value(MathFn1::Log),
         "exp".value(MathFn1::Exp),
         "sin".value(MathFn1::Sin),
         "cos".value(MathFn1::Cos),
@@ -189,9 +204,16 @@ fn parse_dice_new(input: &mut &str) -> PResult<Expression> {
     separated_pair(
         parse_factor_no_dice,
         'd',
-        (parse_factor, repeat(0.., parse_modifier)),
+        (parse_factor_dice_kind, repeat(0.., parse_modifier)),
     )
-    .map(|(qty, (val, mods))| Expression::Dice(Box::new(qty), Box::new(val), mods))
+    .map(|(qty, (kind, modifiers))| {
+        let dice = Dice {
+            quantity: qty.evaluate().round() as u32,
+            kind,
+            modifiers,
+        };
+        Expression::DiceRolls(dice.roll_all(rand::thread_rng()))
+    })
     .parse_next(input)
 }
 
@@ -201,8 +223,11 @@ mod tests {
 
     #[test]
     fn test_expression() {
-        let input = "((1 + 3) * 8) + 5";
-        let result = Expression::parse(input).unwrap();
-        assert_eq!(input, result.to_string())
+        let input = "log(exp(10d6))";
+        let expression = Expression::parse(input).unwrap();
+        let str_expression = &expression.to_string();
+        println!("{input}: {} = {}", str_expression, expression.evaluate());
+
+        todo!();
     }
 }

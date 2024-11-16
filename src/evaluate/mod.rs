@@ -1,2 +1,2 @@
 pub mod expression;
-mod roll;
+pub mod roll;

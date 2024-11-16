@@ -119,7 +119,7 @@ pub fn parse_dice(input: &mut &str) -> PResult<Dice> {
         .parse_next(input)
 }
 
-fn parse_dice_kind(input: &mut &str) -> PResult<DiceKind> {
+pub fn parse_dice_kind(input: &mut &str) -> PResult<DiceKind> {
     alt((
         '%'.map(|_| DiceKind::Standard(100))
             .context(Label("Percentile die"))
@@ -135,10 +135,7 @@ fn parse_dice_kind(input: &mut &str) -> PResult<DiceKind> {
         'F'.map(|_| DiceKind::Fudge2)
             .context(Label("Standard Fudge die"))
             .context(Expected(CharLiteral('F'))),
-        dec_uint
-            .map(|i: u32| DiceKind::Standard(i))
-            .context(Label("Standard")),
-        parse_expr.map(|e| DiceKind::Standard(e.evaluate() as u32)),
+        dec_uint.map(|i: u32| DiceKind::Standard(i)),
     ))
     .context(Label("Die kind"))
     .parse_next(input)

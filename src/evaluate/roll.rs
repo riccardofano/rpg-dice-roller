@@ -41,8 +41,39 @@ struct RollsInfo {
     current: Roll,
 }
 
+#[derive(Debug, Clone)]
+pub struct RollOutput {
+    pub(crate) rolls: Vec<Roll>,
+    pub(crate) kind: RollOutputKind,
+}
+
+#[rustfmt::skip]
+impl RollOutput {
+    pub fn value(self) -> f64 {
+        match self.kind {
+            RollOutputKind::Sum => self.rolls.iter().map(|r| r.value as f64).sum(),
+            RollOutputKind::TargetSuccess => self.rolls.iter().map(|r| {
+                    let success = r.was_modifier_applied(ModifierFlags::TargetSuccess as u8);
+                    if success { 1.0 } else { 0.0 }
+            }).sum(),
+            RollOutputKind::TargetFailure => self.rolls.iter().map(|r| {
+                let success = r.was_modifier_applied(ModifierFlags::TargetSuccess as u8);
+                let failure = r.was_modifier_applied(ModifierFlags::TargetFailure as u8);
+                if success { 1.0 } else if failure { -1.0 } else { 0.0 }
+            }).sum(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum RollOutputKind {
+    Sum,
+    TargetSuccess,
+    TargetFailure,
+}
+
 impl Dice {
-    pub fn roll_all(&self, mut rng: impl Rng) -> Vec<Roll> {
+    pub fn roll_all(&self, mut rng: impl Rng) -> RollOutput {
         let mut rolls_info = RollsInfo {
             all: Vec::with_capacity(self.quantity as usize),
             current: Roll::new(0),
@@ -52,7 +83,13 @@ impl Dice {
             .modifiers
             .iter()
             .position(|m| m.discriminant() >= END_MODIFIER_CUTOFF)
-            .unwrap_or_else(|| self.modifiers.len() - 1);
+            .unwrap_or_else(|| {
+                if self.modifiers.is_empty() {
+                    0
+                } else {
+                    self.modifiers.len() - 1
+                }
+            });
         let (roll_modifiers, post_modifiers) = self.modifiers.split_at(first_post_roll_modifier);
 
         for _ in 0..self.quantity {
@@ -65,11 +102,20 @@ impl Dice {
             rolls_info.all.push(rolls_info.current);
         }
 
+        let mut output_kind = RollOutputKind::Sum;
         for modifier in post_modifiers {
+            match modifier {
+                Modifier::TargetSuccess(_) => output_kind = RollOutputKind::TargetSuccess,
+                Modifier::TargetFailure(_) => output_kind = RollOutputKind::TargetFailure,
+                _ => {}
+            }
             apply_modifier(self, *modifier, &mut rolls_info, &mut rng);
         }
 
-        rolls_info.all
+        RollOutput {
+            rolls: rolls_info.all,
+            kind: output_kind,
+        }
     }
 
     pub fn roll(&self, random_value: f32) -> i32 {
@@ -284,6 +330,7 @@ fn apply_target_success(rolls_info: &mut RollsInfo, compare_point: ComparePoint)
     }
 }
 
+// TODO: a target failure can only exist if it follows a target success
 fn apply_target_failure(rolls_info: &mut RollsInfo, compare_point: ComparePoint) {
     let cmp_fn = compare_point.compare_fn();
 
@@ -417,7 +464,7 @@ impl Display for Roll {
     }
 }
 
-fn to_notations(rolls: &[Roll]) -> String {
+pub fn to_notations(rolls: &[Roll]) -> String {
     format!(
         "[{}]",
         rolls
@@ -481,7 +528,7 @@ mod tests {
         let dice = five_d6(vec![Modifier::Min(3), Modifier::Keep(KeepKind::Highest, 2)]);
         let rolls = dice.roll_all(test_rng());
 
-        assert_eq!(to_notations(&rolls), "[5, 6, 5d, 5d, 3^d]");
+        assert_eq!(to_notations(&rolls.rolls), "[5, 6, 5d, 5d, 3^d]");
     }
 
     #[test]
