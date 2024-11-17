@@ -1,24 +1,23 @@
 use winnow::{
     ascii::{dec_uint, multispace0},
-    combinator::{alt, cut_err, delimited, dispatch, empty, fail, repeat, separated_pair},
+    combinator::{alt, cut_err, delimited, dispatch, empty, fail, opt, repeat, separated_pair},
     token::any,
     PResult, Parser,
 };
 
 use crate::evaluate::roll::RollOutput;
 
-use super::{parse_dice_kind, parse_modifier, Dice, DiceKind, Modifier};
+use super::{parse_dice_kind, parse_modifier, Dice, DiceKind};
 
 #[derive(Debug, Clone)]
 pub enum Expression {
     Value(f64),
-    // Dice(Box<Expression>, Box<Expression>, Vec<Modifier>),
+    DiceRolls(RollOutput),
     Parens(Box<Expression>),
     Group(Box<Expression>),
     Infix(Operator, Box<Expression>, Box<Expression>),
     Fn1(MathFn1, Box<Expression>),
     Fn2(MathFn2, Box<Expression>, Box<Expression>),
-    DiceRolls(RollOutput),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -89,7 +88,7 @@ fn parse_factor(input: &mut &str) -> PResult<Expression> {
     delimited(
         multispace0,
         alt((
-            parse_dice_new,
+            parse_dice.map(|d| Expression::DiceRolls(d.roll_all(rand::thread_rng()))),
             parse_fn2,
             parse_fn1,
             parse_parens,
@@ -200,23 +199,16 @@ fn parse_fn2(input: &mut &str) -> PResult<Expression> {
         .parse_next(input)
 }
 
-fn parse_dice_new(input: &mut &str) -> PResult<Expression> {
+pub fn parse_dice(input: &mut &str) -> PResult<Dice> {
     separated_pair(
-        parse_factor_no_dice,
+        opt(parse_factor_no_dice),
         'd',
         (parse_factor_dice_kind, repeat(0.., parse_modifier)),
     )
-    .map(
-        |(qty, (kind, mut modifiers)): (Expression, (DiceKind, Vec<Modifier>))| {
-            modifiers.sort_by_key(|m| m.discriminant());
-            let dice = Dice {
-                quantity: qty.evaluate().round() as u32,
-                kind,
-                modifiers,
-            };
-            Expression::DiceRolls(dice.roll_all(rand::thread_rng()))
-        },
-    )
+    .map(|(qty, (kind, modifiers))| {
+        let qty = qty.map(|q| q.evaluate().round() as u32).unwrap_or(1);
+        Dice::new(qty, kind, modifiers)
+    })
     .parse_next(input)
 }
 

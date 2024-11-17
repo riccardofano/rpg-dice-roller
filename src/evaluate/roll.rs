@@ -115,7 +115,7 @@ impl Dice {
         for modifier in post_modifiers {
             match modifier {
                 Modifier::TargetSuccess(_) => output_kind = RollOutputKind::TargetSuccess,
-                Modifier::TargetFailure(_) => output_kind = RollOutputKind::TargetFailure,
+                Modifier::TargetFailure(_, _) => output_kind = RollOutputKind::TargetFailure,
                 _ => {}
             }
             apply_modifier(self, *modifier, &mut rolls_info, &mut rng);
@@ -166,7 +166,9 @@ fn apply_modifier(dice: &Dice, modifier: Modifier, rolls_info: &mut RollsInfo, r
             apply_unique(dice, rolls_info, rng, once, compare_point)
         }
         Modifier::TargetSuccess(compare_point) => apply_target_success(rolls_info, compare_point),
-        Modifier::TargetFailure(compare_point) => apply_target_failure(rolls_info, compare_point),
+        Modifier::TargetFailure(success_cmp, failure_cmp) => {
+            apply_target_failure(rolls_info, success_cmp, failure_cmp)
+        }
         Modifier::CriticalSuccess(compare_point) => {
             apply_critical_success(dice, rolls_info, compare_point)
         }
@@ -339,10 +341,14 @@ fn apply_target_success(rolls_info: &mut RollsInfo, compare_point: ComparePoint)
     }
 }
 
-// TODO: a target failure can only exist if it follows a target success
-fn apply_target_failure(rolls_info: &mut RollsInfo, compare_point: ComparePoint) {
-    let cmp_fn = compare_point.compare_fn();
+fn apply_target_failure(
+    rolls_info: &mut RollsInfo,
+    success_cmp: ComparePoint,
+    failure_cmp: ComparePoint,
+) {
+    apply_target_success(rolls_info, success_cmp);
 
+    let cmp_fn = failure_cmp.compare_fn();
     if cmp_fn(rolls_info.current.value.into()) {
         rolls_info
             .current
@@ -1082,7 +1088,11 @@ mod tests {
     #[test]
     fn test_modifier_target_failure() {
         let mut rolls_info = empty_rolls(Roll::new(1));
-        apply_target_failure(&mut rolls_info, ComparePoint::LessThanOrEqual(2.0));
+        apply_target_failure(
+            &mut rolls_info,
+            ComparePoint::GreaterThan(5.0),
+            ComparePoint::LessThanOrEqual(2.0),
+        );
 
         assert_eq!(rolls_info.current.value, 1);
         assert!(rolls_info
@@ -1091,9 +1101,28 @@ mod tests {
     }
 
     #[test]
+    fn test_modifier_target_failure_success_applied() {
+        let mut rolls_info = empty_rolls(Roll::new(6));
+        apply_target_failure(
+            &mut rolls_info,
+            ComparePoint::GreaterThan(5.0),
+            ComparePoint::LessThanOrEqual(2.0),
+        );
+
+        assert_eq!(rolls_info.current.value, 6);
+        assert!(rolls_info
+            .current
+            .was_modifier_applied(ModifierFlags::TargetSuccess as u8))
+    }
+
+    #[test]
     fn test_modifier_target_failure_not_applied() {
         let mut rolls_info = empty_rolls(Roll::new(4));
-        apply_target_failure(&mut rolls_info, ComparePoint::GreaterThan(5.0));
+        apply_target_failure(
+            &mut rolls_info,
+            ComparePoint::LessThan(2.0),
+            ComparePoint::GreaterThan(5.0),
+        );
 
         assert_eq!(rolls_info.current.value, 4);
         assert!(!rolls_info

@@ -1,7 +1,7 @@
 mod evaluate;
 mod parse;
 
-pub use parse::Expression;
+pub use parse::*;
 
 #[cfg(test)]
 mod tests {
@@ -19,6 +19,5 @@ mod tests {
         let elapsed = instant.elapsed();
 
         println!("{elapsed:#?} - {input}: {str_expression} = {evaluated}");
-        todo!();
     }
 }

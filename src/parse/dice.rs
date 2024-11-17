@@ -1,6 +1,6 @@
 use winnow::{
     ascii::{dec_int, dec_uint},
-    combinator::{alt, cut_err, opt, preceded, repeat, separated_pair},
+    combinator::{alt, cut_err, opt, preceded, separated_pair},
     error::{
         StrContext::{Expected, Label},
         StrContextValue::{CharLiteral, StringLiteral},
@@ -8,7 +8,7 @@ use winnow::{
     PResult, Parser,
 };
 
-use super::expression::parse_expr;
+use super::parse_dice;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiceKind {
@@ -61,7 +61,8 @@ pub enum Modifier {
     /// True means to only re-roll a unique dice once
     Unique(bool, Option<ComparePoint>),
     TargetSuccess(ComparePoint),
-    TargetFailure(ComparePoint),
+    /// Target failure must always be preceeded by a target success
+    TargetFailure(ComparePoint, ComparePoint),
     CriticalSuccess(Option<ComparePoint>),
     CriticalFailure(Option<ComparePoint>),
     Keep(KeepKind, u32),
@@ -92,31 +93,19 @@ pub struct Dice {
 }
 
 impl Dice {
+    pub fn new(quantity: u32, kind: DiceKind, mut modifiers: Vec<Modifier>) -> Self {
+        modifiers.sort_by_key(|m| m.discriminant());
+
+        Self {
+            quantity,
+            kind,
+            modifiers,
+        }
+    }
+
     pub fn parse(input: &str) -> Result<Dice, String> {
         parse_dice.parse(input).map_err(|e| e.to_string())
     }
-}
-
-pub fn parse_dice(input: &mut &str) -> PResult<Dice> {
-    (
-        separated_pair(opt(parse_dice_quantity), 'd', parse_dice_kind),
-        repeat(0.., parse_modifier),
-    )
-        .map(
-            |((quantity, kind), mut modifiers): ((Option<u32>, DiceKind), Vec<Modifier>)| {
-                // Make sure modifiers are sorted by the order specified in the enum
-                // TODO: Remove duplicates?
-                modifiers.sort_by_key(|a| a.discriminant());
-
-                Dice {
-                    quantity: quantity.unwrap_or(1),
-                    kind,
-                    modifiers,
-                }
-            },
-        )
-        .context(Label("Dice"))
-        .parse_next(input)
 }
 
 pub fn parse_dice_kind(input: &mut &str) -> PResult<DiceKind> {
@@ -139,10 +128,6 @@ pub fn parse_dice_kind(input: &mut &str) -> PResult<DiceKind> {
     ))
     .context(Label("Die kind"))
     .parse_next(input)
-}
-
-fn parse_dice_quantity(input: &mut &str) -> PResult<u32> {
-    alt((dec_uint, parse_expr.map(|e| e.evaluate() as u32))).parse_next(input)
 }
 
 pub fn parse_modifier(input: &mut &str) -> PResult<Modifier> {
@@ -169,7 +154,8 @@ pub fn parse_modifier(input: &mut &str) -> PResult<Modifier> {
         "sa".map(|_| Modifier::Sort(SortKind::Ascending)),
         "sd".map(|_| Modifier::Sort(SortKind::Descending)),
         's'.map(|_| Modifier::Sort(SortKind::Ascending)),
-        preceded('f', cut_err(compare_point)).map(Modifier::TargetFailure),
+        separated_pair(compare_point, 'f', cut_err(compare_point))
+            .map(|(success, failure)| Modifier::TargetFailure(success, failure)),
         compare_point.map(Modifier::TargetSuccess),
     ))
     .parse_next(input)
