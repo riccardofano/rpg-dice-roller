@@ -7,7 +7,7 @@ use winnow::{
 
 use crate::evaluate::roll::RollOutput;
 
-use super::{parse_dice_kind, parse_modifier, Dice, DiceKind};
+use super::{parse_dice_kind, parse_modifier, Dice, DiceKind, Modifier};
 
 #[derive(Debug, Clone)]
 pub enum Expression {
@@ -206,14 +206,17 @@ fn parse_dice_new(input: &mut &str) -> PResult<Expression> {
         'd',
         (parse_factor_dice_kind, repeat(0.., parse_modifier)),
     )
-    .map(|(qty, (kind, modifiers))| {
-        let dice = Dice {
-            quantity: qty.evaluate().round() as u32,
-            kind,
-            modifiers,
-        };
-        Expression::DiceRolls(dice.roll_all(rand::thread_rng()))
-    })
+    .map(
+        |(qty, (kind, mut modifiers)): (Expression, (DiceKind, Vec<Modifier>))| {
+            modifiers.sort_by_key(|m| m.discriminant());
+            let dice = Dice {
+                quantity: qty.evaluate().round() as u32,
+                kind,
+                modifiers,
+            };
+            Expression::DiceRolls(dice.roll_all(rand::thread_rng()))
+        },
+    )
     .parse_next(input)
 }
 
