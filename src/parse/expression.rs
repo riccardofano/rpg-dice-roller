@@ -8,7 +8,7 @@ use winnow::{
 };
 
 use super::{parse_dice_kind, parse_modifier, Dice, DiceKind, Modifier};
-use crate::evaluate::{dice_roll::RollOutput, group_rolls::apply_group_modifiers};
+use crate::evaluate::{group_rolls::apply_group_modifiers, roll::RollOutput};
 
 #[derive(Debug, Clone)]
 pub enum Expression {
