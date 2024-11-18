@@ -1,20 +1,21 @@
 use winnow::{
     ascii::{dec_uint, multispace0},
-    combinator::{alt, cut_err, delimited, dispatch, empty, fail, opt, repeat, separated_pair},
+    combinator::{
+        alt, cut_err, delimited, dispatch, empty, fail, opt, repeat, separated, separated_pair,
+    },
     token::any,
     PResult, Parser,
 };
 
-use crate::evaluate::roll::RollOutput;
-
-use super::{parse_dice_kind, parse_modifier, Dice, DiceKind};
+use super::{parse_dice_kind, parse_modifier, Dice, DiceKind, Modifier};
+use crate::evaluate::{dice_roll::RollOutput, group_rolls::apply_group_modifiers};
 
 #[derive(Debug, Clone)]
 pub enum Expression {
     Value(f64),
     DiceRolls(RollOutput),
     Parens(Box<Expression>),
-    Group(Box<Expression>),
+    Group(Vec<RollOutput>),
     Infix(Operator, Box<Expression>, Box<Expression>),
     Fn1(MathFn1, Box<Expression>),
     Fn2(MathFn2, Box<Expression>, Box<Expression>),
@@ -130,6 +131,23 @@ fn parse_factor_dice_kind(input: &mut &str) -> PResult<DiceKind> {
 fn parse_parens(input: &mut &str) -> PResult<Expression> {
     delimited('(', parse_expr, ')')
         .map(|e| Expression::Parens(Box::new(e)))
+        .parse_next(input)
+}
+
+fn parse_roll_groups(input: &mut &str) -> PResult<Expression> {
+    (
+        delimited('{', separated(1.., parse_dice, ','), '}'),
+        repeat(0.., parse_modifier),
+    )
+        .map(|(dices, modifiers): (Vec<Dice>, Vec<Modifier>)| {
+            let mut rolls = dices
+                .into_iter()
+                .map(|d| d.roll_all(rand::thread_rng()))
+                .collect::<Vec<_>>();
+
+            apply_group_modifiers(&mut rolls, &modifiers);
+            Expression::Group(rolls)
+        })
         .parse_next(input)
 }
 

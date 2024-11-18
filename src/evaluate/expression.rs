@@ -2,7 +2,7 @@ use std::f64::consts::E;
 
 use crate::parse::{Expression, MathFn1, MathFn2, Operator};
 
-use super::roll::to_notations;
+use super::dice_roll::to_notations;
 
 impl Expression {
     pub fn evaluate(self) -> f64 {

@@ -1,2 +1,3 @@
+pub mod dice_roll;
 pub mod expression;
-pub mod roll;
+pub mod group_rolls;

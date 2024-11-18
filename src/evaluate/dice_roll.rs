@@ -45,9 +45,18 @@ struct RollsInfo {
 pub struct RollOutput {
     pub(crate) rolls: Vec<Roll>,
     pub(crate) kind: RollOutputKind,
+    pub(crate) modifiers: u32,
 }
 
 impl RollOutput {
+    pub fn new(rolls: Vec<Roll>, kind: RollOutputKind) -> Self {
+        Self {
+            rolls,
+            kind,
+            modifiers: 0,
+        }
+    }
+
     #[rustfmt::skip]
     pub fn value(self) -> f64 {
         let iter = self
@@ -121,10 +130,7 @@ impl Dice {
             apply_modifier(self, *modifier, &mut rolls_info, &mut rng);
         }
 
-        RollOutput {
-            rolls: rolls_info.all,
-            kind: output_kind,
-        }
+        RollOutput::new(rolls_info.all, output_kind)
     }
 
     pub fn roll(&self, random_value: f32) -> i32 {
