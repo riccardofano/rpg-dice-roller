@@ -7,6 +7,8 @@ pub use parse::*;
 mod tests {
     use std::time::Instant;
 
+    use rand::thread_rng;
+
     use super::*;
 
     #[test]
@@ -15,9 +17,9 @@ mod tests {
         let instant = Instant::now();
         let expression = Expression::parse(input).unwrap();
         let str_expression = expression.to_string();
-        let evaluated = expression.evaluate();
+        // let evaluated = expression.roll(&mut thread_rng());
         let elapsed = instant.elapsed();
 
-        println!("{elapsed:#?} - {input}: {str_expression} = {evaluated}");
+        // println!("{elapsed:#?} - {input}: {str_expression} = {evaluated}");
     }
 }

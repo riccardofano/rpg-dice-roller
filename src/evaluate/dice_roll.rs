@@ -12,7 +12,7 @@ struct RollsInfo {
 }
 
 impl Dice {
-    pub fn roll_all(&self, mut rng: impl Rng) -> RollOutput {
+    pub fn roll_all(&self, rng: &mut impl Rng) -> RollOutput {
         let mut rolls_info = RollsInfo {
             all: Vec::with_capacity(self.quantity as usize),
             current: Roll::new(0),
@@ -35,7 +35,7 @@ impl Dice {
             rolls_info.current = Roll::new(self.roll(rng.gen()));
 
             for modifier in roll_modifiers {
-                apply_modifier(self, *modifier, &mut rolls_info, &mut rng);
+                apply_modifier(self, *modifier, &mut rolls_info, rng);
             }
 
             rolls_info.all.push(rolls_info.current);
@@ -48,7 +48,7 @@ impl Dice {
                 Modifier::TargetFailure(_, _) => output_kind = RollOutputKind::TargetFailure,
                 _ => {}
             }
-            apply_modifier(self, *modifier, &mut rolls_info, &mut rng);
+            apply_modifier(self, *modifier, &mut rolls_info, rng);
         }
 
         RollOutput::new(rolls_info.all, output_kind)
@@ -418,7 +418,7 @@ mod tests {
     #[test]
     fn test_rolling() {
         let dice = five_d6(vec![Modifier::Min(3), Modifier::Keep(KeepKind::Highest, 2)]);
-        let rolls = dice.roll_all(test_rng());
+        let rolls = dice.roll_all(&mut test_rng());
 
         assert_eq!(to_notations(&rolls.rolls), "[5, 6, 5d, 5d, 3^d]");
     }
@@ -469,7 +469,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             ExplodingKind::Standard,
             None,
         );
@@ -488,7 +488,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             ExplodingKind::Standard,
             Some(ComparePoint::GreaterThan(4.0)),
         );
@@ -507,7 +507,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             ExplodingKind::Standard,
             Some(ComparePoint::GreaterThan(4.0)),
         );
@@ -525,7 +525,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             ExplodingKind::Penetrating,
             None,
         );
@@ -544,7 +544,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             ExplodingKind::Penetrating,
             Some(ComparePoint::GreaterThan(4.0)),
         );
@@ -563,7 +563,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             ExplodingKind::Penetrating,
             Some(ComparePoint::GreaterThan(4.0)),
         );
@@ -581,7 +581,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             ExplodingKind::Compounding,
             None,
         );
@@ -599,7 +599,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             ExplodingKind::Compounding,
             Some(ComparePoint::GreaterThan(4.0)),
         );
@@ -617,7 +617,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             ExplodingKind::Compounding,
             Some(ComparePoint::GreaterThan(4.0)),
         );
@@ -635,7 +635,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             ExplodingKind::PenetratingCompounding,
             None,
         );
@@ -653,7 +653,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             ExplodingKind::PenetratingCompounding,
             Some(ComparePoint::GreaterThan(3.0)),
         );
@@ -671,7 +671,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             ExplodingKind::PenetratingCompounding,
             Some(ComparePoint::LessThan(4.0)),
         );
@@ -689,7 +689,7 @@ mod tests {
         apply_reroll(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             false,
             None,
         );
@@ -707,7 +707,7 @@ mod tests {
         apply_reroll(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             false,
             Some(ComparePoint::LessThanOrEqual(5.0)),
         );
@@ -725,7 +725,7 @@ mod tests {
         apply_reroll(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             false,
             Some(ComparePoint::Equal(4.0)),
         );
@@ -743,7 +743,7 @@ mod tests {
         apply_reroll(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             true,
             None,
         );
@@ -761,7 +761,7 @@ mod tests {
         apply_reroll(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             true,
             Some(ComparePoint::LessThanOrEqual(5.0)),
         );
@@ -779,7 +779,7 @@ mod tests {
         apply_reroll(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             true,
             Some(ComparePoint::Equal(4.0)),
         );
@@ -801,7 +801,7 @@ mod tests {
         apply_unique(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             false,
             None,
         );
@@ -823,7 +823,7 @@ mod tests {
         apply_unique(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             false,
             Some(ComparePoint::Equal(5.0)),
         );
@@ -845,7 +845,7 @@ mod tests {
         apply_unique(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             false,
             Some(ComparePoint::Equal(6.0)),
         );
@@ -867,7 +867,7 @@ mod tests {
         apply_unique(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             false,
             Some(ComparePoint::Equal(5.0)),
         );
@@ -889,7 +889,7 @@ mod tests {
         apply_unique(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             true,
             None,
         );
@@ -911,7 +911,7 @@ mod tests {
         apply_unique(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             true,
             Some(ComparePoint::LessThanOrEqual(5.0)),
         );
@@ -929,7 +929,7 @@ mod tests {
         apply_unique(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut test_rng(),
+            &mut &mut test_rng(),
             true,
             Some(ComparePoint::Equal(4.0)),
         );

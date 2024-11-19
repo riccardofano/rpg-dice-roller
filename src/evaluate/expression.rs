@@ -1,39 +1,103 @@
 use std::f64::consts::E;
 
-use crate::parse::{Expression, MathFn1, MathFn2, Operator};
+use rand::Rng;
 
-use super::{dice_roll::to_notations, group_rolls::to_group_notations};
+use crate::{
+    parse::{Expression, MathFn1, MathFn2, Operator},
+    Dice, DiceKind, Modifier,
+};
+
+use super::{dice_roll::to_notations, group_rolls::to_group_notations, roll::RollOutput};
 
 impl Expression {
-    pub fn evaluate(self) -> f64 {
+    pub fn roll(self, rng: &mut impl Rng) -> RolledExpression {
         match self {
-            Expression::Value(float) => float,
-            Expression::DiceRolls(output) => output.value(),
-            Expression::Parens(expr) => expr.evaluate(),
-            Expression::Group(outputs) => outputs.into_iter().map(|output| output.value()).sum(),
-            Expression::Infix(op, lhs, rhs) => op.evaluate(*lhs, *rhs),
-            Expression::Fn1(f, arg) => f.evaluate(*arg),
-            Expression::Fn2(f, arg1, arg2) => f.evaluate(*arg1, *arg2),
+            Expression::Value(float) => RolledExpression::Value(float),
+            Expression::DiceFudge1(qty, mods) => {
+                let dice = dice_from_expression(qty.map(|q| *q), DiceKind::Fudge1, mods, rng);
+                RolledExpression::DiceRoll(dice.roll_all(rng))
+            }
+            Expression::DiceFudge2(qty, mods) => {
+                let dice = dice_from_expression(qty.map(|q| *q), DiceKind::Fudge2, mods, rng);
+                RolledExpression::DiceRoll(dice.roll_all(rng))
+            }
+            Expression::DicePercentile(qty, mods) => {
+                let dice =
+                    dice_from_expression(qty.map(|q| *q), DiceKind::Standard(100), mods, rng);
+                RolledExpression::DiceRoll(dice.roll_all(rng))
+            }
+            Expression::DiceStandard(qty, sides, mods) => {
+                let sides = sides.roll(rng).value().round() as u32;
+                let dice =
+                    dice_from_expression(qty.map(|q| *q), DiceKind::Standard(sides), mods, rng);
+                RolledExpression::DiceRoll(dice.roll_all(rng))
+            }
+            Expression::Parens(expr) => expr.roll(rng),
+            // Expression::Group(outputs) => outputs.into_iter().map(|output| output.value()).sum(),
+            Expression::Group(outputs) => todo!(),
+            Expression::Infix(op, lhs, rhs) => {
+                RolledExpression::Infix(op, Box::new(lhs.roll(rng)), Box::new(rhs.roll(rng)))
+            }
+            Expression::Fn1(f, arg) => RolledExpression::Fn1(f, Box::new(arg.roll(rng))),
+            Expression::Fn2(f, arg1, arg2) => {
+                RolledExpression::Fn2(f, Box::new(arg1.roll(rng)), Box::new(arg2.roll(rng)))
+            }
         }
     }
 }
 
-impl Operator {
-    pub fn evaluate(self, lhs: Expression, rhs: Expression) -> f64 {
+enum RolledExpression {
+    DiceRoll(RollOutput),
+    Value(f64),
+    Parens(Box<RolledExpression>),
+    Infix(Operator, Box<RolledExpression>, Box<RolledExpression>),
+    Fn1(MathFn1, Box<RolledExpression>),
+    Fn2(MathFn2, Box<RolledExpression>, Box<RolledExpression>),
+}
+
+impl RolledExpression {
+    pub fn value(self) -> f64 {
         match self {
-            Operator::Add => lhs.evaluate() + rhs.evaluate(),
-            Operator::Sub => lhs.evaluate() - rhs.evaluate(),
-            Operator::Mul => lhs.evaluate() * rhs.evaluate(),
-            Operator::Div => lhs.evaluate() / rhs.evaluate(),
-            Operator::Pow => lhs.evaluate() * rhs.evaluate(),
-            Operator::Rem => lhs.evaluate() % rhs.evaluate(),
+            RolledExpression::DiceRoll(roll_output) => roll_output.value(),
+            RolledExpression::Value(float) => float,
+            RolledExpression::Parens(expr) => expr.value(),
+            RolledExpression::Infix(operator, lhs, rhs) => operator.evaluate(*lhs, *rhs),
+            RolledExpression::Fn1(f, arg) => f.evaluate(*arg),
+            RolledExpression::Fn2(f, arg1, arg2) => f.evaluate(*arg1, *arg2),
+        }
+    }
+}
+
+fn dice_from_expression(
+    quantity: Option<Expression>,
+    kind: DiceKind,
+    modifiers: Vec<Modifier>,
+    rng: &mut impl Rng,
+) -> Dice {
+    let quantity = match quantity {
+        Some(expression) => expression.roll(rng).value().round() as u32,
+        None => 1,
+    };
+
+    Dice::new(quantity, kind, modifiers)
+}
+
+impl Operator {
+    pub fn evaluate(&self, lhs: RolledExpression, rhs: RolledExpression) -> f64 {
+        match self {
+            Operator::Add => lhs.value() + rhs.value(),
+            Operator::Sub => lhs.value() - rhs.value(),
+            Operator::Mul => lhs.value() * rhs.value(),
+            Operator::Div => lhs.value() / rhs.value(),
+            Operator::Pow => lhs.value() * rhs.value(),
+            Operator::Rem => lhs.value() % rhs.value(),
         }
     }
 }
 
 impl MathFn1 {
-    pub fn evaluate(self, arg: Expression) -> f64 {
-        let arg = arg.evaluate();
+    pub fn evaluate(&self, arg: RolledExpression) -> f64 {
+        let arg = arg.value();
         match self {
             MathFn1::Abs => arg.abs(),
             MathFn1::Floor => arg.floor(),
@@ -51,9 +115,9 @@ impl MathFn1 {
 }
 
 impl MathFn2 {
-    pub fn evaluate(self, arg1: Expression, arg2: Expression) -> f64 {
-        let arg1 = arg1.evaluate();
-        let arg2 = arg2.evaluate();
+    pub fn evaluate(&self, arg1: RolledExpression, arg2: RolledExpression) -> f64 {
+        let arg1 = arg1.value();
+        let arg2 = arg2.value();
 
         match self {
             MathFn2::Min => arg1.min(arg2),
@@ -67,7 +131,14 @@ impl std::fmt::Display for Expression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Expression::Value(val) => write!(f, "{val}"),
-            Expression::DiceRolls(output) => write!(f, "{}", to_notations(&output.rolls)),
+            Expression::DiceStandard(None, sides, _) => write!(f, "d{sides}"),
+            Expression::DiceStandard(Some(qty), sides, _) => write!(f, "{qty}d{sides}"),
+            Expression::DiceFudge1(None, _) => write!(f, "dF.1"),
+            Expression::DiceFudge1(Some(qty), _) => write!(f, "{qty}dF.1"),
+            Expression::DiceFudge2(None, _) => write!(f, "dF.2"),
+            Expression::DiceFudge2(Some(qty), _) => write!(f, "{qty}dF.2"),
+            Expression::DicePercentile(None, _) => write!(f, "d%"),
+            Expression::DicePercentile(Some(qty), _) => write!(f, "{qty}d%"),
             Expression::Parens(expr) => write!(f, "({expr})"),
             Expression::Group(outputs) => write!(f, "{{{}}}", to_group_notations(&outputs)),
             Expression::Infix(op, expr1, expr2) => write!(f, "{expr1} {op} {expr2}"),

@@ -1,19 +1,25 @@
 use winnow::{
     ascii::{dec_uint, multispace0},
     combinator::{
-        alt, cut_err, delimited, dispatch, empty, fail, opt, repeat, separated, separated_pair,
+        alt, cut_err, delimited, dispatch, empty, fail, repeat, separated, separated_pair,
     },
     token::any,
     PResult, Parser,
 };
 
-use super::{parse_dice_kind, parse_group_modifier, parse_modifier, Dice, DiceKind, Modifier};
+use super::{
+    parse_dice_fudge1, parse_dice_fudge2, parse_dice_percentile, parse_dice_standard,
+    parse_group_modifier, parse_modifier, Dice, DiceKind, Modifier,
+};
 use crate::evaluate::{group_rolls::apply_group_modifiers, roll::RollOutput};
 
 #[derive(Debug, Clone)]
 pub enum Expression {
     Value(f64),
-    DiceRolls(RollOutput),
+    DiceStandard(Option<Box<Expression>>, Box<Expression>, Vec<Modifier>),
+    DiceFudge1(Option<Box<Expression>>, Vec<Modifier>),
+    DiceFudge2(Option<Box<Expression>>, Vec<Modifier>),
+    DicePercentile(Option<Box<Expression>>, Vec<Modifier>),
     Parens(Box<Expression>),
     // TODO: Groups should be vecs of expressions because you should be allowed to do
     // math on a dice and that dice should get sorted on the results of the
@@ -92,8 +98,11 @@ fn parse_factor(input: &mut &str) -> PResult<Expression> {
     delimited(
         multispace0,
         alt((
-            parse_dice.map(|d| Expression::DiceRolls(d.roll_all(rand::thread_rng()))),
-            parse_roll_groups,
+            parse_dice_fudge2,
+            parse_dice_fudge1,
+            parse_dice_percentile,
+            parse_dice_standard,
+            // parse_roll_groups,
             parse_fn2,
             parse_fn1,
             parse_parens,
@@ -104,58 +113,31 @@ fn parse_factor(input: &mut &str) -> PResult<Expression> {
     .parse_next(input)
 }
 
-fn parse_factor_no_dice(input: &mut &str) -> PResult<Expression> {
-    delimited(
-        multispace0,
-        alt((
-            parse_fn2,
-            parse_fn1,
-            parse_parens,
-            dec_uint.map(|i: u32| Expression::Value(i as f64)),
-        )),
-        multispace0,
-    )
-    .parse_next(input)
-}
-
-fn parse_factor_dice_kind(input: &mut &str) -> PResult<DiceKind> {
-    delimited(
-        multispace0,
-        alt((
-            parse_dice_kind,
-            parse_fn2.map(|f| DiceKind::Standard(f.evaluate().round() as u32)),
-            parse_fn1.map(|f| DiceKind::Standard(f.evaluate().round() as u32)),
-            parse_parens.map(|expr| DiceKind::Standard(expr.evaluate().round() as u32)),
-        )),
-        multispace0,
-    )
-    .parse_next(input)
-}
-
-fn parse_parens(input: &mut &str) -> PResult<Expression> {
+pub fn parse_parens(input: &mut &str) -> PResult<Expression> {
     delimited('(', parse_expr, ')')
         .map(|e| Expression::Parens(Box::new(e)))
         .parse_next(input)
 }
 
-fn parse_roll_groups(input: &mut &str) -> PResult<Expression> {
-    (
-        delimited('{', separated(1.., parse_dice, ','), '}'),
-        repeat(0.., parse_group_modifier),
-    )
-        .map(|(dices, mut modifiers): (Vec<Dice>, Vec<Modifier>)| {
-            let mut rolls = dices
-                .into_iter()
-                .map(|d| d.roll_all(rand::thread_rng()))
-                .collect::<Vec<_>>();
+// TODO
+// fn parse_roll_groups(input: &mut &str) -> PResult<Expression> {
+//     (
+//         delimited('{', separated(1.., parse_dice, ','), '}'),
+//         repeat(0.., parse_group_modifier),
+//     )
+//         .map(|(dices, mut modifiers): (Vec<Dice>, Vec<Modifier>)| {
+//             let mut rolls = dices
+//                 .into_iter()
+//                 .map(|d| d.roll_all(rand::thread_rng()))
+//                 .collect::<Vec<_>>();
 
-            modifiers.sort_by_key(|m| m.discriminant());
-            apply_group_modifiers(&mut rolls, &modifiers);
+//             modifiers.sort_by_key(|m| m.discriminant());
+//             apply_group_modifiers(&mut rolls, &modifiers);
 
-            Expression::Group(rolls)
-        })
-        .parse_next(input)
-}
+//             Expression::Group(rolls)
+//         })
+//         .parse_next(input)
+// }
 
 fn low_precendence_operator(input: &mut &str) -> PResult<Operator> {
     dispatch!(any;
@@ -204,13 +186,13 @@ fn parse_fn2_name(input: &mut &str) -> PResult<MathFn2> {
     .parse_next(input)
 }
 
-fn parse_fn1(input: &mut &str) -> PResult<Expression> {
+pub fn parse_fn1(input: &mut &str) -> PResult<Expression> {
     (parse_fn1_name, cut_err(parse_parens))
         .map(|(f, arg)| Expression::Fn1(f, Box::new(arg)))
         .parse_next(input)
 }
 
-fn parse_fn2(input: &mut &str) -> PResult<Expression> {
+pub fn parse_fn2(input: &mut &str) -> PResult<Expression> {
     (
         parse_fn2_name,
         cut_err(delimited(
@@ -223,28 +205,16 @@ fn parse_fn2(input: &mut &str) -> PResult<Expression> {
         .parse_next(input)
 }
 
-pub fn parse_dice(input: &mut &str) -> PResult<Dice> {
-    separated_pair(
-        opt(parse_factor_no_dice),
-        'd',
-        (parse_factor_dice_kind, repeat(0.., parse_modifier)),
-    )
-    .map(|(qty, (kind, modifiers))| {
-        let qty = qty.map(|q| q.evaluate().round() as u32).unwrap_or(1);
-        Dice::new(qty, kind, modifiers)
-    })
-    .parse_next(input)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_expression() {
-        let input = "{10d6, 5d3}s";
+        let input = "10d6 + 5d3s";
         let expression = Expression::parse(input).unwrap();
 
-        println!("{expression}");
+        println!("{expression:?}");
+        todo!()
     }
 }

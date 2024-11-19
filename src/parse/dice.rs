@@ -1,6 +1,6 @@
 use winnow::{
-    ascii::{dec_int, dec_uint},
-    combinator::{alt, cut_err, opt, preceded, separated_pair},
+    ascii::{dec_int, dec_uint, multispace0},
+    combinator::{alt, cut_err, delimited, opt, preceded, repeat, separated_pair},
     error::{
         StrContext::{Expected, Label},
         StrContextValue::{CharLiteral, StringLiteral},
@@ -8,7 +8,7 @@ use winnow::{
     PResult, Parser,
 };
 
-use super::parse_dice;
+use super::{parse_fn1, parse_fn2, parse_parens, Expression};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiceKind {
@@ -104,29 +104,77 @@ impl Dice {
     }
 
     pub fn parse(input: &str) -> Result<Dice, String> {
-        parse_dice.parse(input).map_err(|e| e.to_string())
+        todo!();
     }
 }
 
-pub fn parse_dice_kind(input: &mut &str) -> PResult<DiceKind> {
-    alt((
-        '%'.map(|_| DiceKind::Standard(100))
-            .context(Label("Percentile die"))
-            .context(Expected(CharLiteral('%'))),
-        "F.1"
-            .map(|_| DiceKind::Fudge1)
-            .context(Label("Fudge die variant"))
-            .context(Expected(StringLiteral("F.1"))),
-        "F.2"
-            .map(|_| DiceKind::Fudge2)
-            .context(Label("Standard Fudge die"))
-            .context(Expected(StringLiteral("F.2"))),
-        'F'.map(|_| DiceKind::Fudge2)
-            .context(Label("Standard Fudge die"))
-            .context(Expected(CharLiteral('F'))),
-        dec_uint.map(|i: u32| DiceKind::Standard(i)),
-    ))
-    .context(Label("Die kind"))
+pub fn parse_dice_standard(input: &mut &str) -> PResult<Expression> {
+    separated_pair(
+        opt(parse_dice_quantity),
+        'd',
+        cut_err((parse_dice_sides, repeat(0.., parse_modifier))),
+    )
+    .map(|(qty, (sides, modifiers))| {
+        Expression::DiceStandard(qty.map(Box::new), Box::new(sides), modifiers)
+    })
+    .parse_next(input)
+}
+
+pub fn parse_dice_fudge1(input: &mut &str) -> PResult<Expression> {
+    separated_pair(
+        opt(parse_dice_quantity),
+        "dF.1",
+        cut_err(repeat(0.., parse_modifier)),
+    )
+    .map(|(qty, modifiers)| Expression::DiceFudge1(qty.map(Box::new), modifiers))
+    .parse_next(input)
+}
+
+pub fn parse_dice_fudge2(input: &mut &str) -> PResult<Expression> {
+    separated_pair(
+        opt(parse_dice_quantity),
+        alt(("dF.2", "dF")),
+        cut_err(repeat(0.., parse_modifier)),
+    )
+    .map(|(qty, modifiers)| Expression::DiceFudge2(qty.map(Box::new), modifiers))
+    .parse_next(input)
+}
+
+pub fn parse_dice_percentile(input: &mut &str) -> PResult<Expression> {
+    separated_pair(
+        opt(parse_dice_quantity),
+        "d%",
+        cut_err(repeat(0.., parse_modifier)),
+    )
+    .map(|(qty, modifiers)| Expression::DicePercentile(qty.map(Box::new), modifiers))
+    .parse_next(input)
+}
+
+fn parse_dice_quantity(input: &mut &str) -> PResult<Expression> {
+    delimited(
+        multispace0,
+        alt((
+            parse_fn2,
+            parse_fn1,
+            parse_parens,
+            dec_uint.map(|i: u32| Expression::Value(i as f64)),
+        )),
+        multispace0,
+    )
+    .parse_next(input)
+}
+
+fn parse_dice_sides(input: &mut &str) -> PResult<Expression> {
+    delimited(
+        multispace0,
+        alt((
+            parse_fn2,
+            parse_fn1,
+            parse_parens,
+            dec_uint.map(|int: u32| Expression::Value(int as f64)),
+        )),
+        multispace0,
+    )
     .parse_next(input)
 }
 
