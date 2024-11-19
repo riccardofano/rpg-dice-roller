@@ -7,7 +7,7 @@ use winnow::{
     PResult, Parser,
 };
 
-use super::{parse_dice_kind, parse_modifier, Dice, DiceKind, Modifier};
+use super::{parse_dice_kind, parse_group_modifier, parse_modifier, Dice, DiceKind, Modifier};
 use crate::evaluate::{group_rolls::apply_group_modifiers, roll::RollOutput};
 
 #[derive(Debug, Clone)]
@@ -15,6 +15,9 @@ pub enum Expression {
     Value(f64),
     DiceRolls(RollOutput),
     Parens(Box<Expression>),
+    // TODO: Groups should be vecs of expressions because you should be allowed to do
+    // math on a dice and that dice should get sorted on the results of the
+    // expression, not only the total value of the rolls
     Group(Vec<RollOutput>),
     Infix(Operator, Box<Expression>, Box<Expression>),
     Fn1(MathFn1, Box<Expression>),
@@ -138,7 +141,7 @@ fn parse_parens(input: &mut &str) -> PResult<Expression> {
 fn parse_roll_groups(input: &mut &str) -> PResult<Expression> {
     (
         delimited('{', separated(1.., parse_dice, ','), '}'),
-        repeat(0.., parse_modifier),
+        repeat(0.., parse_group_modifier),
     )
         .map(|(dices, modifiers): (Vec<Dice>, Vec<Modifier>)| {
             let mut rolls = dices

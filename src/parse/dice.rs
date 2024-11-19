@@ -174,6 +174,24 @@ fn exploding(input: &mut &str) -> PResult<Modifier> {
     .parse_next(input)
 }
 
+pub fn parse_group_modifier(input: &mut &str) -> PResult<Modifier> {
+    alt((
+        preceded("kl", cut_err(dec_uint)).map(|n| Modifier::Keep(KeepKind::Lowest, n)),
+        preceded("kh", cut_err(dec_uint)).map(|n| Modifier::Keep(KeepKind::Highest, n)),
+        preceded('k', cut_err(dec_uint)).map(|n| Modifier::Keep(KeepKind::Highest, n)),
+        preceded("dh", cut_err(dec_uint)).map(|n| Modifier::Drop(KeepKind::Highest, n)),
+        preceded("dl", cut_err(dec_uint)).map(|n| Modifier::Drop(KeepKind::Lowest, n)),
+        preceded('d', cut_err(dec_uint)).map(|n| Modifier::Drop(KeepKind::Lowest, n)),
+        "sa".map(|_| Modifier::Sort(SortKind::Ascending)),
+        "sd".map(|_| Modifier::Sort(SortKind::Descending)),
+        's'.map(|_| Modifier::Sort(SortKind::Ascending)),
+        separated_pair(compare_point, 'f', cut_err(compare_point))
+            .map(|(success, failure)| Modifier::TargetFailure(success, failure)),
+        compare_point.map(Modifier::TargetSuccess),
+    ))
+    .parse_next(input)
+}
+
 fn compare_point(input: &mut &str) -> PResult<ComparePoint> {
     alt((
         preceded("<=", cut_err(dec_int)).map(|i: i32| ComparePoint::LessThanOrEqual(f64::from(i))),
