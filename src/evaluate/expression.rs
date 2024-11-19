@@ -2,7 +2,7 @@ use std::f64::consts::E;
 
 use crate::parse::{Expression, MathFn1, MathFn2, Operator};
 
-use super::dice_roll::to_notations;
+use super::{dice_roll::to_notations, group_rolls::to_group_notations};
 
 impl Expression {
     pub fn evaluate(self) -> f64 {
@@ -10,7 +10,7 @@ impl Expression {
             Expression::Value(float) => float,
             Expression::DiceRolls(output) => output.value(),
             Expression::Parens(expr) => expr.evaluate(),
-            Expression::Group(_) => todo!(),
+            Expression::Group(outputs) => outputs.into_iter().map(|output| output.value()).sum(),
             Expression::Infix(op, lhs, rhs) => op.evaluate(*lhs, *rhs),
             Expression::Fn1(f, arg) => f.evaluate(*arg),
             Expression::Fn2(f, arg1, arg2) => f.evaluate(*arg1, *arg2),
@@ -69,7 +69,7 @@ impl std::fmt::Display for Expression {
             Expression::Value(val) => write!(f, "{val}"),
             Expression::DiceRolls(output) => write!(f, "{}", to_notations(&output.rolls)),
             Expression::Parens(expr) => write!(f, "({expr})"),
-            Expression::Group(_) => todo!(),
+            Expression::Group(outputs) => write!(f, "{{{}}}", to_group_notations(&outputs)),
             Expression::Infix(op, expr1, expr2) => write!(f, "{expr1} {op} {expr2}"),
             // no parens on the function call because there's always a parens expression following the function call
             Expression::Fn1(func, arg) => write!(f, "{func}{arg}"),

@@ -89,3 +89,11 @@ fn apply_group_sort(outputs: &mut [RollOutput], sort_kind: SortKind) {
         }
     }
 }
+
+pub fn to_group_notations(outputs: &[RollOutput]) -> String {
+    outputs
+        .iter()
+        .map(|o| o.to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
+}

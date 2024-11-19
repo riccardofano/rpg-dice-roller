@@ -143,13 +143,15 @@ fn parse_roll_groups(input: &mut &str) -> PResult<Expression> {
         delimited('{', separated(1.., parse_dice, ','), '}'),
         repeat(0.., parse_group_modifier),
     )
-        .map(|(dices, modifiers): (Vec<Dice>, Vec<Modifier>)| {
+        .map(|(dices, mut modifiers): (Vec<Dice>, Vec<Modifier>)| {
             let mut rolls = dices
                 .into_iter()
                 .map(|d| d.roll_all(rand::thread_rng()))
                 .collect::<Vec<_>>();
 
+            modifiers.sort_by_key(|m| m.discriminant());
             apply_group_modifiers(&mut rolls, &modifiers);
+
             Expression::Group(rolls)
         })
         .parse_next(input)
@@ -243,7 +245,6 @@ mod tests {
         let input = "{10d6, 5d3}s";
         let expression = Expression::parse(input).unwrap();
 
-        dbg!(expression);
-        // todo!()
+        println!("{expression}");
     }
 }

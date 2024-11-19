@@ -1,3 +1,5 @@
+use crate::evaluate::dice_roll::to_notations;
+
 #[derive(Debug, Clone, Copy)]
 pub struct Roll {
     pub(crate) value: i32,
@@ -129,6 +131,19 @@ impl std::fmt::Display for Roll {
                     // We don't want to apply critical success/failure on dropped rolls
                     break;
                 }
+            }
+        }
+        write!(f, "{}", str)
+    }
+}
+
+impl std::fmt::Display for RollOutput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut str = to_notations(&self.rolls);
+
+        for (i, notation) in MODIFER_MOTATION.iter().enumerate() {
+            if self.was_modifier_applied(i as u8) {
+                str.push_str(notation);
             }
         }
         write!(f, "{}", str)
