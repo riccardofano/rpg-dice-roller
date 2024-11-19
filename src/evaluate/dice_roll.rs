@@ -368,7 +368,7 @@ pub fn to_notations(rolls: &[Roll]) -> String {
 }
 
 impl ComparePoint {
-    fn compare_fn(self) -> Box<dyn Fn(f64) -> bool> {
+    pub fn compare_fn(self) -> Box<dyn Fn(f64) -> bool> {
         match self {
             ComparePoint::Equal(n) => Box::new(move |a| a == n),
             ComparePoint::NotEqual(n) => Box::new(move |a| a != n),
