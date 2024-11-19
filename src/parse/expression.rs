@@ -90,6 +90,7 @@ fn parse_factor(input: &mut &str) -> PResult<Expression> {
         multispace0,
         alt((
             parse_dice.map(|d| Expression::DiceRolls(d.roll_all(rand::thread_rng()))),
+            parse_roll_groups,
             parse_fn2,
             parse_fn1,
             parse_parens,
@@ -232,6 +233,14 @@ pub fn parse_dice(input: &mut &str) -> PResult<Dice> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
-    fn test_expression() {}
+    fn test_expression() {
+        let input = "{10d6, 5d3}s";
+        let expression = Expression::parse(input).unwrap();
+
+        dbg!(expression);
+        // todo!()
+    }
 }
