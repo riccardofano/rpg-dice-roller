@@ -74,6 +74,14 @@ impl Modifier {
         // NOTE: https://doc.rust-lang.org/std/mem/fn.discriminant.html#accessing-the-numeric-value-of-the-discriminant
         unsafe { *<*const _>::from(self).cast::<u8>() }
     }
+
+    pub fn join_all(modifiers: &[Modifier]) -> String {
+        modifiers
+            .iter()
+            .map(|m| m.to_string())
+            .collect::<Vec<_>>()
+            .join("")
+    }
 }
 impl PartialOrd for Modifier {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -247,6 +255,77 @@ fn compare_point(input: &mut &str) -> PResult<ComparePoint> {
     .parse_next(input)
 }
 
+impl std::fmt::Display for Modifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Modifier::Min(val) => write!(f, "min{val}"),
+            Modifier::Max(val) => write!(f, "max{val}"),
+            Modifier::Exploding(kind, cmp) => write!(f, "{kind}{}", cmp_str(cmp)),
+            Modifier::ReRoll(unique, cmp) => {
+                write!(f, "r{}{}", if *unique { "o" } else { "" }, cmp_str(cmp))
+            }
+            Modifier::Unique(unique, cmp) => {
+                write!(f, "u{}{}", if *unique { "o" } else { "" }, cmp_str(cmp))
+            }
+            Modifier::TargetSuccess(cmp) => write!(f, "{cmp}"),
+            Modifier::TargetFailure(succ, fail) => write!(f, "{succ}f{fail}"),
+            Modifier::CriticalSuccess(cmp) => write!(f, "cs{}", cmp_str(cmp)),
+            Modifier::CriticalFailure(cmp) => write!(f, "cf{}", cmp_str(cmp)),
+            Modifier::Keep(kind, amount) => write!(f, "k{kind}{amount}"),
+            Modifier::Drop(kind, amount) => write!(f, "d{kind}{amount}"),
+            Modifier::Sort(kind) => write!(f, "s{kind}"),
+        }
+    }
+}
+impl std::fmt::Display for ComparePoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ComparePoint::Equal(val) => write!(f, "={val}"),
+            ComparePoint::NotEqual(val) => write!(f, "<>{val}"),
+            ComparePoint::LessThan(val) => write!(f, "<{val}"),
+            ComparePoint::GreaterThan(val) => write!(f, ">{val}"),
+            ComparePoint::LessThanOrEqual(val) => write!(f, "<={val}"),
+            ComparePoint::GreaterThanOrEqual(val) => write!(f, ">={val}"),
+        }
+    }
+}
+// Just because I don't want to keep typing it
+fn cmp_str(cmp: &Option<ComparePoint>) -> String {
+    cmp.map(|c| c.to_string()).unwrap_or_default()
+}
+impl std::fmt::Display for ExplodingKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = match self {
+            ExplodingKind::Standard => "!",
+            ExplodingKind::Penetrating => "!p",
+            ExplodingKind::Compounding => "!!",
+            ExplodingKind::PenetratingCompounding => "!!p",
+        };
+
+        write!(f, "{str}")
+    }
+}
+impl std::fmt::Display for KeepKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = match self {
+            KeepKind::Highest => "",
+            KeepKind::Lowest => "l",
+        };
+
+        write!(f, "{str}")
+    }
+}
+impl std::fmt::Display for SortKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = match self {
+            SortKind::Ascending => "",
+            SortKind::Descending => "d",
+        };
+
+        write!(f, "{str}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use winnow::Parser;
@@ -256,7 +335,7 @@ mod tests {
         Expression,
     };
 
-    use super::{compare_point, parse_modifier, Dice, DiceKind, ExplodingKind, KeepKind, SortKind};
+    use super::{compare_point, parse_modifier, ExplodingKind, KeepKind, SortKind};
 
     /**
      * Parsing dice without modifiers

@@ -141,14 +141,24 @@ impl std::fmt::Display for Expression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Expression::Value(val) => write!(f, "{val}"),
-            Expression::DiceStandard(None, sides, _) => write!(f, "d{sides}"),
-            Expression::DiceStandard(Some(qty), sides, _) => write!(f, "{qty}d{sides}"),
-            Expression::DiceFudge1(None, _) => write!(f, "dF.1"),
-            Expression::DiceFudge1(Some(qty), _) => write!(f, "{qty}dF.1"),
-            Expression::DiceFudge2(None, _) => write!(f, "dF.2"),
-            Expression::DiceFudge2(Some(qty), _) => write!(f, "{qty}dF.2"),
-            Expression::DicePercentile(None, _) => write!(f, "d%"),
-            Expression::DicePercentile(Some(qty), _) => write!(f, "{qty}d%"),
+            Expression::DiceStandard(None, sides, mods) => {
+                write!(f, "d{sides}{}", Modifier::join_all(mods))
+            }
+            Expression::DiceStandard(Some(qty), sides, mods) => {
+                write!(f, "{qty}d{sides}{}", Modifier::join_all(mods))
+            }
+            Expression::DiceFudge1(None, mods) => write!(f, "dF.1{}", Modifier::join_all(mods)),
+            Expression::DiceFudge1(Some(qty), mods) => {
+                write!(f, "{qty}dF.1{}", Modifier::join_all(mods))
+            }
+            Expression::DiceFudge2(None, mods) => write!(f, "dF.2{}", Modifier::join_all(mods)),
+            Expression::DiceFudge2(Some(qty), mods) => {
+                write!(f, "{qty}dF.2{}", Modifier::join_all(mods))
+            }
+            Expression::DicePercentile(None, mods) => write!(f, "d%{}", Modifier::join_all(mods)),
+            Expression::DicePercentile(Some(qty), mods) => {
+                write!(f, "{qty}d%{}", Modifier::join_all(mods))
+            }
             Expression::Parens(expr) => write!(f, "({expr})"),
             Expression::Group(expressions, _) => {
                 let expressions = expressions
