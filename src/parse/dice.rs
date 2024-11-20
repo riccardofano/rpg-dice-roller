@@ -98,10 +98,6 @@ impl Dice {
             modifiers,
         }
     }
-
-    pub fn parse(input: &str) -> Result<Dice, String> {
-        todo!();
-    }
 }
 
 pub fn parse_dice_standard(input: &mut &str) -> PResult<Expression> {
@@ -255,7 +251,10 @@ fn compare_point(input: &mut &str) -> PResult<ComparePoint> {
 mod tests {
     use winnow::Parser;
 
-    use crate::parse::{ComparePoint, Modifier};
+    use crate::{
+        parse::{ComparePoint, Modifier},
+        Expression,
+    };
 
     use super::{compare_point, parse_modifier, Dice, DiceKind, ExplodingKind, KeepKind, SortKind};
 
@@ -265,44 +264,101 @@ mod tests {
 
     #[test]
     fn test_one_standard_d6() {
-        let dice = Dice::parse("1d6").unwrap();
-        assert_eq!(dice.quantity, 1);
-        assert_eq!(dice.kind, DiceKind::Standard(6))
+        let expression = Expression::parse("1d6").unwrap();
+
+        let Expression::DiceStandard(qty, sides, mods) = expression else {
+            panic!()
+        };
+        assert_eq!(*qty.unwrap(), Expression::Value(1.0));
+        assert_eq!(*sides, Expression::Value(6.0));
+        assert_eq!(mods, vec![]);
     }
 
     #[test]
     fn test_one_standard_d6_without_quantity() {
-        let dice = Dice::parse("d6").unwrap();
-        assert_eq!(dice.quantity, 1);
-        assert_eq!(dice.kind, DiceKind::Standard(6))
+        let expression = Expression::parse("d6").unwrap();
+
+        let Expression::DiceStandard(qty, sides, mods) = expression else {
+            panic!()
+        };
+        assert!(qty.is_none());
+        assert_eq!(*sides, Expression::Value(6.0));
+        assert_eq!(mods, vec![]);
     }
 
     #[test]
     fn test_one_percentile_dice() {
-        let dice = Dice::parse("1d%").unwrap();
-        assert_eq!(dice.quantity, 1);
-        assert_eq!(dice.kind, DiceKind::Standard(100))
+        let expression = Expression::parse("1d%").unwrap();
+
+        let Expression::DicePercentile(qty, mods) = expression else {
+            panic!()
+        };
+        assert_eq!(*qty.unwrap(), Expression::Value(1.0));
+        assert_eq!(mods, vec![]);
     }
 
     #[test]
     fn test_one_standard_fudge_die() {
-        let dice = Dice::parse("1dF").unwrap();
-        assert_eq!(dice.quantity, 1);
-        assert_eq!(dice.kind, DiceKind::Fudge2)
+        let expression = Expression::parse("1dF").unwrap();
+
+        let Expression::DiceFudge2(qty, mods) = expression else {
+            panic!()
+        };
+        assert_eq!(*qty.unwrap(), Expression::Value(1.0));
+        assert_eq!(mods, vec![]);
     }
 
     #[test]
     fn test_one_standard_fudge_die_dot_notation() {
-        let dice = Dice::parse("1dF.2").unwrap();
-        assert_eq!(dice.quantity, 1);
-        assert_eq!(dice.kind, DiceKind::Fudge2)
+        let expression = Expression::parse("1dF.2").unwrap();
+
+        let Expression::DiceFudge2(qty, mods) = expression else {
+            panic!()
+        };
+        assert_eq!(*qty.unwrap(), Expression::Value(1.0));
+        assert_eq!(mods, vec![]);
     }
 
     #[test]
     fn test_one_variant_fudge_die() {
-        let dice = Dice::parse("1dF.1").unwrap();
-        assert_eq!(dice.quantity, 1);
-        assert_eq!(dice.kind, DiceKind::Fudge1)
+        let expression = Expression::parse("1dF.1").unwrap();
+
+        let Expression::DiceFudge1(qty, mods) = expression else {
+            panic!()
+        };
+        assert_eq!(*qty.unwrap(), Expression::Value(1.0));
+        assert_eq!(mods, vec![]);
+    }
+
+    /**
+     * Parsing dice with modifiers
+     */
+
+    #[test]
+    fn test_one_standard_d6_with_one_min_modifier() {
+        let expression = Expression::parse("d6min3").unwrap();
+
+        let Expression::DiceStandard(qty, sides, mods) = expression else {
+            panic!()
+        };
+        assert!(qty.is_none());
+        assert_eq!(*sides, Expression::Value(6.0));
+        assert_eq!(mods, vec![Modifier::Min(3)]);
+    }
+
+    #[test]
+    fn test_one_standard_d6_with_min_max_modifiers() {
+        let expression = Expression::parse("d6max4min2").unwrap();
+
+        let Expression::DiceStandard(qty, sides, mods) = expression else {
+            panic!()
+        };
+        assert!(qty.is_none());
+        assert_eq!(*sides, Expression::Value(6.0));
+        // It's fine for the modifiers to not be sorted,
+        // When I print the parsed expression they will be in the same order as the input
+        // making it easy to test the parsed.to_string() to the input
+        assert_eq!(mods, vec![Modifier::Max(4), Modifier::Min(2)]);
     }
 
     /**
@@ -596,33 +652,5 @@ mod tests {
     fn test_compare_point_greater_than_or_equal() {
         let res = compare_point.parse(">=456").unwrap();
         assert_eq!(res, ComparePoint::GreaterThanOrEqual(456.0))
-    }
-
-    /**
-     * Parsing dice with modifiers
-     */
-
-    #[test]
-    fn test_one_standard_d6_with_one_min_modifier() {
-        let dice = Dice::parse("d6min3").unwrap();
-        assert_eq!(dice.quantity, 1);
-        assert_eq!(dice.kind, DiceKind::Standard(6));
-        assert_eq!(dice.modifiers, vec![Modifier::Min(3)]);
-    }
-
-    #[test]
-    fn test_one_standard_d6_with_two_min_modifier() {
-        let dice = Dice::parse("d6min3min2").unwrap();
-        assert_eq!(dice.quantity, 1);
-        assert_eq!(dice.kind, DiceKind::Standard(6));
-        assert_eq!(dice.modifiers, vec![Modifier::Min(3), Modifier::Min(2)]);
-    }
-
-    #[test]
-    fn test_one_standard_d6_with_min_max_modifiers() {
-        let dice = Dice::parse("d6max4min2").unwrap();
-        assert_eq!(dice.quantity, 1);
-        assert_eq!(dice.kind, DiceKind::Standard(6));
-        assert_eq!(dice.modifiers, vec![Modifier::Min(2), Modifier::Max(4)]);
     }
 }

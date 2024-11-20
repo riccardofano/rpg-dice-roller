@@ -12,7 +12,7 @@ use super::{
     parse_group_modifier, Modifier,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Value(f64),
     DiceStandard(Option<Box<Expression>>, Box<Expression>, Vec<Modifier>),
@@ -29,7 +29,7 @@ pub enum Expression {
     Fn2(MathFn2, Box<Expression>, Box<Expression>),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operator {
     Add,
     Sub,
@@ -39,7 +39,7 @@ pub enum Operator {
     Pow,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MathFn1 {
     Abs,
     Floor,
@@ -54,7 +54,7 @@ pub enum MathFn1 {
     Tan,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MathFn2 {
     Min,
     Max,
@@ -97,8 +97,8 @@ fn parse_factor(input: &mut &str) -> PResult<Expression> {
     delimited(
         multispace0,
         alt((
-            parse_dice_fudge2,
             parse_dice_fudge1,
+            parse_dice_fudge2,
             parse_dice_percentile,
             parse_dice_standard,
             parse_fn2,
@@ -207,7 +207,6 @@ mod tests {
         let input = "10d6 + 5d3s";
         let expression = Expression::parse(input).unwrap();
 
-        println!("{expression:?}");
-        todo!()
+        assert_eq!(expression.to_string(), input);
     }
 }

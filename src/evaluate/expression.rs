@@ -53,7 +53,7 @@ impl Expression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum RolledExpression {
     DiceRoll(RollOutput),
     Group(GroupRollOutput),

@@ -49,7 +49,7 @@ impl Roll {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RollOutput {
     pub(crate) rolls: Vec<Roll>,
     pub(crate) kind: RollOutputKind,
@@ -99,14 +99,14 @@ impl RollOutput {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RollOutputKind {
     Sum,
     TargetSuccess,
     TargetFailure,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GroupRollOutput {
     pub(crate) modifier_flags: Vec<u32>,
     pub(crate) expressions: Vec<RolledExpression>,
