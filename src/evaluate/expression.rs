@@ -8,9 +8,8 @@ use crate::{
 };
 
 use super::{
-    dice_roll::to_notations,
-    group_rolls::{apply_group_modifiers, GroupRollOutput},
-    roll::RollOutput,
+    group_rolls::apply_group_modifiers,
+    roll::{GroupRollOutput, RollOutput},
 };
 
 impl Expression {
@@ -152,7 +151,12 @@ impl std::fmt::Display for Expression {
             Expression::DicePercentile(Some(qty), _) => write!(f, "{qty}d%"),
             Expression::Parens(expr) => write!(f, "({expr})"),
             Expression::Group(expressions, _) => {
-                write!(f, "{{{}}}", todo!())
+                let expressions = expressions
+                    .iter()
+                    .map(|e| e.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "{{{expressions}}}",)
             }
             Expression::Infix(op, expr1, expr2) => write!(f, "{expr1} {op} {expr2}"),
             // no parens on the function call because there's always a parens expression following the function call
@@ -165,13 +169,8 @@ impl std::fmt::Display for Expression {
 impl std::fmt::Display for RolledExpression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RolledExpression::DiceRoll(roll_output) => {
-                write!(f, "{}", to_notations(&roll_output.rolls))
-            }
-            RolledExpression::Group(group_output) => {
-                // write!(f, "{}", to_group_notations(output))
-                todo!();
-            }
+            RolledExpression::DiceRoll(roll_output) => write!(f, "{roll_output}"),
+            RolledExpression::Group(group_output) => write!(f, "{{{group_output}}}"),
             RolledExpression::Value(float) => write!(f, "{float}"),
             RolledExpression::Parens(expr) => write!(f, "({expr})"),
             RolledExpression::Infix(op, lhs, rhs) => write!(f, "{lhs} {op} {rhs}"),

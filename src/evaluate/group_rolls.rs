@@ -1,51 +1,9 @@
-use crate::{evaluate::roll::MODIFER_NOTATION, parse::SortKind, ComparePoint, KeepKind, Modifier};
+use crate::{parse::SortKind, ComparePoint, KeepKind, Modifier};
 
 use super::{
     expression::RolledExpression,
-    roll::{ModifierFlags, RollOutputKind},
+    roll::{GroupRollOutput, ModifierFlags, RollOutputKind},
 };
-
-#[derive(Debug, Clone)]
-pub struct GroupRollOutput {
-    modifier_flags: Vec<u32>,
-    expressions: Vec<RolledExpression>,
-    kind: RollOutputKind,
-}
-
-impl GroupRollOutput {
-    #[rustfmt::skip]
-    pub fn value(&self) -> f64 {
-        let iter = self.expressions.iter().enumerate().filter(|(i, _)| {
-            !was_modifier_applied(self.modifier_flags[*i], ModifierFlags::Drop as u8)
-        });
-
-        match self.kind {
-            RollOutputKind::Sum => iter.map(|(_, expr)| expr.value()).sum(),
-            RollOutputKind::TargetSuccess => iter
-                .map(|(i, _)| {
-                    let success = was_modifier_applied(self.modifier_flags[i], ModifierFlags::TargetSuccess as u8);
-                    if success { 1.0 } else { 0.0 }
-                })
-                .sum(),
-            RollOutputKind::TargetFailure => iter
-                .map(|(i, _)| {
-                    let success = was_modifier_applied(self.modifier_flags[i], ModifierFlags::TargetSuccess as u8);
-                    let failure = was_modifier_applied(self.modifier_flags[i], ModifierFlags::TargetFailure as u8);
-                    if success { 1.0 } else if failure { -1.0 } else { 0.0 }
-                })
-                .sum(),
-        }
-    }
-}
-
-// NOTE: This is not a method of GroupRollOutput because otherwise I would not
-// be allowed to mutably borrow self while iterating over self.expressions
-pub fn set_modifier_flag(flags: &mut u32, flag: u8) {
-    *flags |= 1 << flag;
-}
-pub fn was_modifier_applied(flags: u32, flag: u8) -> bool {
-    (flags & (1 << flag)) != 0
-}
 
 pub fn apply_group_modifiers(
     expressions: Vec<RolledExpression>,
@@ -91,7 +49,10 @@ fn apply_group_keep(output: &mut GroupRollOutput, keep_kind: KeepKind, amount: u
     }
 
     for &i in &indices[(amount as usize)..] {
-        set_modifier_flag(&mut output.modifier_flags[i], ModifierFlags::Drop as u8);
+        GroupRollOutput::set_modifier_flag(
+            &mut output.modifier_flags[i],
+            ModifierFlags::Drop as u8,
+        );
     }
 }
 
@@ -111,7 +72,10 @@ fn apply_group_drop(output: &mut GroupRollOutput, keep_kind: KeepKind, amount: u
     }
 
     for &i in &indices[..(amount as usize)] {
-        set_modifier_flag(&mut output.modifier_flags[i], ModifierFlags::Drop as u8);
+        GroupRollOutput::set_modifier_flag(
+            &mut output.modifier_flags[i],
+            ModifierFlags::Drop as u8,
+        );
     }
 }
 
@@ -120,7 +84,7 @@ fn apply_group_target_success(output: &mut GroupRollOutput, compare_point: Compa
 
     for (i, expression) in output.expressions.iter().enumerate() {
         if cmp_fn(expression.value()) {
-            set_modifier_flag(
+            GroupRollOutput::set_modifier_flag(
                 &mut output.modifier_flags[i],
                 ModifierFlags::TargetSuccess as u8,
             );
@@ -138,7 +102,7 @@ fn apply_group_target_failure(
     let cmp_fn = failure_cmp.compare_fn();
     for (i, expression) in output.expressions.iter().enumerate() {
         if cmp_fn(expression.value()) {
-            set_modifier_flag(
+            GroupRollOutput::set_modifier_flag(
                 &mut output.modifier_flags[i],
                 ModifierFlags::TargetFailure as u8,
             );
@@ -171,27 +135,5 @@ fn apply_group_sort(output: &mut GroupRollOutput, sort_kind: SortKind) {
                 }
             }
         }
-    }
-}
-
-impl std::fmt::Display for GroupRollOutput {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let group = self
-            .expressions
-            .iter()
-            .enumerate()
-            .map(|(ei, expr)| {
-                let mut notations = String::new();
-                for (ni, notation) in MODIFER_NOTATION.iter().enumerate() {
-                    if was_modifier_applied(self.modifier_flags[ei], ni as u8) {
-                        notations.push_str(notation);
-                    }
-                }
-                format!("{expr}{notations}")
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        write!(f, "{group}")
     }
 }
