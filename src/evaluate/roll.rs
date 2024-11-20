@@ -100,7 +100,7 @@ pub enum ModifierFlags {
     CriticalFailure,
 }
 
-pub const MODIFER_MOTATION: [&str; 16] = [
+pub const MODIFER_NOTATION: [&str; 16] = [
     "^", "v", "!", "!p", "!!", "!!p", "r", "ro", "u", "uo", "d", "d", "*", "_", "**", "__",
 ];
 
@@ -123,7 +123,7 @@ impl PartialOrd for Roll {
 impl std::fmt::Display for Roll {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut str = format!("{}", self.value);
-        for (i, notation) in MODIFER_MOTATION.iter().enumerate() {
+        for (i, notation) in MODIFER_NOTATION.iter().enumerate() {
             if self.was_modifier_applied(i as u8) {
                 str.push_str(notation);
 
@@ -141,7 +141,7 @@ impl std::fmt::Display for RollOutput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut str = to_notations(&self.rolls);
 
-        for (i, notation) in MODIFER_MOTATION.iter().enumerate() {
+        for (i, notation) in MODIFER_NOTATION.iter().enumerate() {
             if self.was_modifier_applied(i as u8) {
                 str.push_str(notation);
             }

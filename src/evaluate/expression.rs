@@ -9,7 +9,7 @@ use crate::{
 
 use super::{
     dice_roll::to_notations,
-    group_rolls::{apply_group_modifiers, to_group_notations, GroupRollOutput},
+    group_rolls::{apply_group_modifiers, GroupRollOutput},
     roll::RollOutput,
 };
 
