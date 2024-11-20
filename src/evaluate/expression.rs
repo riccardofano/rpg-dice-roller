@@ -7,7 +7,11 @@ use crate::{
     Dice, DiceKind, Modifier,
 };
 
-use super::{dice_roll::to_notations, group_rolls::to_group_notations, roll::RollOutput};
+use super::{
+    dice_roll::to_notations,
+    group_rolls::{apply_group_modifiers, to_group_notations, GroupRollOutput},
+    roll::RollOutput,
+};
 
 impl Expression {
     pub fn roll(self, rng: &mut impl Rng) -> RolledExpression {
@@ -33,8 +37,12 @@ impl Expression {
                 RolledExpression::DiceRoll(dice.roll_all(rng))
             }
             Expression::Parens(expr) => expr.roll(rng),
-            // Expression::Group(outputs) => outputs.into_iter().map(|output| output.value()).sum(),
-            Expression::Group(outputs) => todo!(),
+            Expression::Group(expressions, modifiers) => {
+                let rolled_expressions =
+                    expressions.into_iter().map(|expr| expr.roll(rng)).collect();
+                let output = apply_group_modifiers(rolled_expressions, &modifiers);
+                RolledExpression::Group(output)
+            }
             Expression::Infix(op, lhs, rhs) => {
                 RolledExpression::Infix(op, Box::new(lhs.roll(rng)), Box::new(rhs.roll(rng)))
             }
@@ -46,8 +54,10 @@ impl Expression {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum RolledExpression {
     DiceRoll(RollOutput),
+    Group(GroupRollOutput),
     Value(f64),
     Parens(Box<RolledExpression>),
     Infix(Operator, Box<RolledExpression>, Box<RolledExpression>),
@@ -56,14 +66,15 @@ pub enum RolledExpression {
 }
 
 impl RolledExpression {
-    pub fn value(self) -> f64 {
+    pub fn value(&self) -> f64 {
         match self {
             RolledExpression::DiceRoll(roll_output) => roll_output.value(),
-            RolledExpression::Value(float) => float,
+            RolledExpression::Group(group_output) => group_output.value(),
+            RolledExpression::Value(float) => *float,
             RolledExpression::Parens(expr) => expr.value(),
-            RolledExpression::Infix(operator, lhs, rhs) => operator.evaluate(*lhs, *rhs),
-            RolledExpression::Fn1(f, arg) => f.evaluate(*arg),
-            RolledExpression::Fn2(f, arg1, arg2) => f.evaluate(*arg1, *arg2),
+            RolledExpression::Infix(operator, lhs, rhs) => operator.evaluate(lhs, rhs),
+            RolledExpression::Fn1(f, arg) => f.evaluate(arg),
+            RolledExpression::Fn2(f, arg1, arg2) => f.evaluate(arg1, arg2),
         }
     }
 }
@@ -83,7 +94,7 @@ fn dice_from_expression(
 }
 
 impl Operator {
-    pub fn evaluate(&self, lhs: RolledExpression, rhs: RolledExpression) -> f64 {
+    pub fn evaluate(&self, lhs: &RolledExpression, rhs: &RolledExpression) -> f64 {
         match self {
             Operator::Add => lhs.value() + rhs.value(),
             Operator::Sub => lhs.value() - rhs.value(),
@@ -96,7 +107,7 @@ impl Operator {
 }
 
 impl MathFn1 {
-    pub fn evaluate(&self, arg: RolledExpression) -> f64 {
+    pub fn evaluate(&self, arg: &RolledExpression) -> f64 {
         let arg = arg.value();
         match self {
             MathFn1::Abs => arg.abs(),
@@ -115,7 +126,7 @@ impl MathFn1 {
 }
 
 impl MathFn2 {
-    pub fn evaluate(&self, arg1: RolledExpression, arg2: RolledExpression) -> f64 {
+    pub fn evaluate(&self, arg1: &RolledExpression, arg2: &RolledExpression) -> f64 {
         let arg1 = arg1.value();
         let arg2 = arg2.value();
 
@@ -140,7 +151,9 @@ impl std::fmt::Display for Expression {
             Expression::DicePercentile(None, _) => write!(f, "d%"),
             Expression::DicePercentile(Some(qty), _) => write!(f, "{qty}d%"),
             Expression::Parens(expr) => write!(f, "({expr})"),
-            Expression::Group(outputs) => write!(f, "{{{}}}", to_group_notations(outputs)),
+            Expression::Group(expressions, _) => {
+                write!(f, "{{{}}}", todo!())
+            }
             Expression::Infix(op, expr1, expr2) => write!(f, "{expr1} {op} {expr2}"),
             // no parens on the function call because there's always a parens expression following the function call
             Expression::Fn1(func, arg) => write!(f, "{func}{arg}"),
@@ -154,6 +167,10 @@ impl std::fmt::Display for RolledExpression {
         match self {
             RolledExpression::DiceRoll(roll_output) => {
                 write!(f, "{}", to_notations(&roll_output.rolls))
+            }
+            RolledExpression::Group(group_output) => {
+                // write!(f, "{}", to_group_notations(output))
+                todo!();
             }
             RolledExpression::Value(float) => write!(f, "{float}"),
             RolledExpression::Parens(expr) => write!(f, "({expr})"),

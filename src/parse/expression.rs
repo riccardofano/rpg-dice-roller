@@ -9,9 +9,8 @@ use winnow::{
 
 use super::{
     parse_dice_fudge1, parse_dice_fudge2, parse_dice_percentile, parse_dice_standard,
-    parse_group_modifier, parse_modifier, Dice, DiceKind, Modifier,
+    parse_group_modifier, Modifier,
 };
-use crate::evaluate::{group_rolls::apply_group_modifiers, roll::RollOutput};
 
 #[derive(Debug, Clone)]
 pub enum Expression {
@@ -24,7 +23,7 @@ pub enum Expression {
     // TODO: Groups should be vecs of expressions because you should be allowed to do
     // math on a dice and that dice should get sorted on the results of the
     // expression, not only the total value of the rolls
-    Group(Vec<RollOutput>),
+    Group(Vec<Expression>, Vec<Modifier>),
     Infix(Operator, Box<Expression>, Box<Expression>),
     Fn1(MathFn1, Box<Expression>),
     Fn2(MathFn2, Box<Expression>, Box<Expression>),
@@ -102,9 +101,9 @@ fn parse_factor(input: &mut &str) -> PResult<Expression> {
             parse_dice_fudge1,
             parse_dice_percentile,
             parse_dice_standard,
-            // parse_roll_groups,
             parse_fn2,
             parse_fn1,
+            parse_roll_groups,
             parse_parens,
             dec_uint.map(|i: u32| Expression::Value(i as f64)),
         )),
@@ -119,25 +118,19 @@ pub fn parse_parens(input: &mut &str) -> PResult<Expression> {
         .parse_next(input)
 }
 
-// TODO
-// fn parse_roll_groups(input: &mut &str) -> PResult<Expression> {
-//     (
-//         delimited('{', separated(1.., parse_dice, ','), '}'),
-//         repeat(0.., parse_group_modifier),
-//     )
-//         .map(|(dices, mut modifiers): (Vec<Dice>, Vec<Modifier>)| {
-//             let mut rolls = dices
-//                 .into_iter()
-//                 .map(|d| d.roll_all(rand::thread_rng()))
-//                 .collect::<Vec<_>>();
-
-//             modifiers.sort_by_key(|m| m.discriminant());
-//             apply_group_modifiers(&mut rolls, &modifiers);
-
-//             Expression::Group(rolls)
-//         })
-//         .parse_next(input)
-// }
+fn parse_roll_groups(input: &mut &str) -> PResult<Expression> {
+    (
+        delimited('{', separated(1.., parse_expr, ','), '}'),
+        repeat(0.., parse_group_modifier),
+    )
+        .map(
+            |(expressions, mut modifiers): (Vec<Expression>, Vec<Modifier>)| {
+                modifiers.sort_by_key(|m| m.discriminant());
+                Expression::Group(expressions, modifiers)
+            },
+        )
+        .parse_next(input)
+}
 
 fn low_precendence_operator(input: &mut &str) -> PResult<Operator> {
     dispatch!(any;
