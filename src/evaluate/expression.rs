@@ -46,7 +46,7 @@ impl Expression {
     }
 }
 
-enum RolledExpression {
+pub enum RolledExpression {
     DiceRoll(RollOutput),
     Value(f64),
     Parens(Box<RolledExpression>),
@@ -140,11 +140,26 @@ impl std::fmt::Display for Expression {
             Expression::DicePercentile(None, _) => write!(f, "d%"),
             Expression::DicePercentile(Some(qty), _) => write!(f, "{qty}d%"),
             Expression::Parens(expr) => write!(f, "({expr})"),
-            Expression::Group(outputs) => write!(f, "{{{}}}", to_group_notations(&outputs)),
+            Expression::Group(outputs) => write!(f, "{{{}}}", to_group_notations(outputs)),
             Expression::Infix(op, expr1, expr2) => write!(f, "{expr1} {op} {expr2}"),
             // no parens on the function call because there's always a parens expression following the function call
             Expression::Fn1(func, arg) => write!(f, "{func}{arg}"),
-            Expression::Fn2(func, arg1, arg2) => write!(f, "{func}{arg1}, {arg2}"),
+            Expression::Fn2(func, arg1, arg2) => write!(f, "{func}({arg1}, {arg2})"),
+        }
+    }
+}
+
+impl std::fmt::Display for RolledExpression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RolledExpression::DiceRoll(roll_output) => {
+                write!(f, "{}", to_notations(&roll_output.rolls))
+            }
+            RolledExpression::Value(float) => write!(f, "{float}"),
+            RolledExpression::Parens(expr) => write!(f, "({expr})"),
+            RolledExpression::Infix(op, lhs, rhs) => write!(f, "{lhs} {op} {rhs}"),
+            RolledExpression::Fn1(func, arg) => write!(f, "{func}{arg}"),
+            RolledExpression::Fn2(func, arg1, arg2) => write!(f, "{func}({arg1}, {arg2})"),
         }
     }
 }
