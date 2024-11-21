@@ -211,7 +211,7 @@ impl std::fmt::Display for MathFn1 {
             MathFn1::Round => "round",
             MathFn1::Sign => "sign",
             MathFn1::Sqrt => "sqrt",
-            MathFn1::Log => "ln",
+            MathFn1::Log => "log",
             MathFn1::Exp => "exp",
             MathFn1::Sin => "sin",
             MathFn1::Cos => "cos",
