@@ -98,6 +98,7 @@ pub struct Dice {
 
 impl Dice {
     pub fn new(quantity: u32, kind: DiceKind, mut modifiers: Vec<Modifier>) -> Self {
+        // TODO: maybe only sort them when you apply them?
         modifiers.sort_by_key(|m| m.discriminant());
 
         Self {
@@ -307,8 +308,10 @@ impl std::fmt::Display for ExplodingKind {
 }
 impl std::fmt::Display for KeepKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Always show the letter because it changes which one can be omitted
+        // depending on if it's Drop or Keep
         let str = match self {
-            KeepKind::Highest => "",
+            KeepKind::Highest => "h",
             KeepKind::Lowest => "l",
         };
 

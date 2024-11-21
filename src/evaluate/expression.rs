@@ -158,13 +158,13 @@ impl std::fmt::Display for Expression {
                 write!(f, "{qty}d%{}", Modifier::join_all(mods))
             }
             Expression::Parens(expr) => write!(f, "({expr})"),
-            Expression::Group(expressions, _) => {
+            Expression::Group(expressions, mods) => {
                 let expressions = expressions
                     .iter()
                     .map(|e| e.to_string())
                     .collect::<Vec<_>>()
                     .join(", ");
-                write!(f, "{{{expressions}}}",)
+                write!(f, "{{{expressions}}}{}", Modifier::join_all(mods))
             }
             Expression::Infix(op, expr1, expr2) => write!(f, "{expr1} {op} {expr2}"),
             // no parens on the function call because there's always a parens expression following the function call

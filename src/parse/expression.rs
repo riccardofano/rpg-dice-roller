@@ -231,8 +231,8 @@ mod tests {
 
         for (input, expected) in inputs {
             let expression = Expression::parse(input).unwrap();
+            assert_eq!(expression, expected);
             assert_eq!(expression.to_string(), input);
-            assert_eq!(expression, expected)
         }
     }
 
@@ -263,8 +263,8 @@ mod tests {
 
         for (input, expected) in inputs {
             let expression = Expression::parse(input).unwrap();
+            assert_eq!(expression, expected);
             assert_eq!(expression.to_string(), input);
-            assert_eq!(expression, expected)
         }
     }
 
@@ -287,8 +287,8 @@ mod tests {
 
         for (input, expected) in inputs {
             let expression = Expression::parse(input).unwrap();
+            assert_eq!(expression, expected);
             assert_eq!(expression.to_string(), input);
-            assert_eq!(expression, expected)
         }
     }
 
@@ -303,8 +303,25 @@ mod tests {
 
         for (input, expected) in inputs {
             let expression = Expression::parse(input).unwrap();
+            assert_eq!(expression, expected);
             assert_eq!(expression.to_string(), input);
-            assert_eq!(expression, expected)
+        }
+    }
+
+    #[test]
+    fn test_group_expressions() {
+        #[rustfmt::skip]
+        let inputs = [
+            ( "{1, 5}", Expression::Group(vec![*val(1.0), *val(5.0)], vec![])),
+            ( "{1 % 3, 5}", Expression::Group(vec![*infix(Operator::Rem, val(1.0), val(3.0)), *val(5.0)], vec![])),
+            ( "{1, 5}dl1", Expression::Group(vec![*val(1.0), *val(5.0)], vec![Modifier::Drop(crate::KeepKind::Lowest, 1)])),
+            ( "{1, 5}kh3dl1", Expression::Group(vec![*val(1.0), *val(5.0)], vec![Modifier::Keep(crate::KeepKind::Highest, 3), Modifier::Drop(crate::KeepKind::Lowest, 1)])),
+        ];
+
+        for (input, expected) in inputs {
+            let expression = Expression::parse(input).unwrap();
+            assert_eq!(expression, expected);
+            assert_eq!(expression.to_string(), input);
         }
     }
 }
