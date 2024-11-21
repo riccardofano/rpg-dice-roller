@@ -1,26 +1,32 @@
 use winnow::{
     ascii::{dec_uint, multispace0},
-    combinator::{alt, cut_err, delimited, dispatch, empty, fail, opt, repeat, separated_pair},
+    combinator::{
+        alt, cut_err, delimited, dispatch, empty, fail, repeat, separated, separated_pair,
+    },
     token::any,
     PResult, Parser,
 };
 
-use crate::evaluate::roll::RollOutput;
+use super::{
+    parse_dice_fudge1, parse_dice_fudge2, parse_dice_percentile, parse_dice_standard,
+    parse_group_modifier, Modifier,
+};
 
-use super::{parse_dice_kind, parse_modifier, Dice, DiceKind};
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Value(f64),
-    DiceRolls(RollOutput),
+    DiceStandard(Option<Box<Expression>>, Box<Expression>, Vec<Modifier>),
+    DiceFudge1(Option<Box<Expression>>, Vec<Modifier>),
+    DiceFudge2(Option<Box<Expression>>, Vec<Modifier>),
+    DicePercentile(Option<Box<Expression>>, Vec<Modifier>),
     Parens(Box<Expression>),
-    Group(Box<Expression>),
+    Group(Vec<Expression>, Vec<Modifier>),
     Infix(Operator, Box<Expression>, Box<Expression>),
     Fn1(MathFn1, Box<Expression>),
     Fn2(MathFn2, Box<Expression>, Box<Expression>),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operator {
     Add,
     Sub,
@@ -30,7 +36,7 @@ pub enum Operator {
     Pow,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MathFn1 {
     Abs,
     Floor,
@@ -45,7 +51,7 @@ pub enum MathFn1 {
     Tan,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MathFn2 {
     Min,
     Max,
@@ -88,9 +94,13 @@ fn parse_factor(input: &mut &str) -> PResult<Expression> {
     delimited(
         multispace0,
         alt((
-            parse_dice.map(|d| Expression::DiceRolls(d.roll_all(rand::thread_rng()))),
+            parse_dice_fudge1,
+            parse_dice_fudge2,
+            parse_dice_percentile,
+            parse_dice_standard,
             parse_fn2,
             parse_fn1,
+            parse_roll_groups,
             parse_parens,
             dec_uint.map(|i: u32| Expression::Value(i as f64)),
         )),
@@ -99,37 +109,23 @@ fn parse_factor(input: &mut &str) -> PResult<Expression> {
     .parse_next(input)
 }
 
-fn parse_factor_no_dice(input: &mut &str) -> PResult<Expression> {
-    delimited(
-        multispace0,
-        alt((
-            parse_fn2,
-            parse_fn1,
-            parse_parens,
-            dec_uint.map(|i: u32| Expression::Value(i as f64)),
-        )),
-        multispace0,
-    )
-    .parse_next(input)
-}
-
-fn parse_factor_dice_kind(input: &mut &str) -> PResult<DiceKind> {
-    delimited(
-        multispace0,
-        alt((
-            parse_dice_kind,
-            parse_fn2.map(|f| DiceKind::Standard(f.evaluate().round() as u32)),
-            parse_fn1.map(|f| DiceKind::Standard(f.evaluate().round() as u32)),
-            parse_parens.map(|expr| DiceKind::Standard(expr.evaluate().round() as u32)),
-        )),
-        multispace0,
-    )
-    .parse_next(input)
-}
-
-fn parse_parens(input: &mut &str) -> PResult<Expression> {
+pub fn parse_parens(input: &mut &str) -> PResult<Expression> {
     delimited('(', parse_expr, ')')
         .map(|e| Expression::Parens(Box::new(e)))
+        .parse_next(input)
+}
+
+fn parse_roll_groups(input: &mut &str) -> PResult<Expression> {
+    (
+        delimited('{', separated(1.., parse_expr, ','), '}'),
+        repeat(0.., parse_group_modifier),
+    )
+        .map(
+            |(expressions, mut modifiers): (Vec<Expression>, Vec<Modifier>)| {
+                modifiers.sort_by_key(|m| m.discriminant());
+                Expression::Group(expressions, modifiers)
+            },
+        )
         .parse_next(input)
 }
 
@@ -180,13 +176,13 @@ fn parse_fn2_name(input: &mut &str) -> PResult<MathFn2> {
     .parse_next(input)
 }
 
-fn parse_fn1(input: &mut &str) -> PResult<Expression> {
+pub fn parse_fn1(input: &mut &str) -> PResult<Expression> {
     (parse_fn1_name, cut_err(parse_parens))
         .map(|(f, arg)| Expression::Fn1(f, Box::new(arg)))
         .parse_next(input)
 }
 
-fn parse_fn2(input: &mut &str) -> PResult<Expression> {
+pub fn parse_fn2(input: &mut &str) -> PResult<Expression> {
     (
         parse_fn2_name,
         cut_err(delimited(
@@ -199,21 +195,133 @@ fn parse_fn2(input: &mut &str) -> PResult<Expression> {
         .parse_next(input)
 }
 
-pub fn parse_dice(input: &mut &str) -> PResult<Dice> {
-    separated_pair(
-        opt(parse_factor_no_dice),
-        'd',
-        (parse_factor_dice_kind, repeat(0.., parse_modifier)),
-    )
-    .map(|(qty, (kind, modifiers))| {
-        let qty = qty.map(|q| q.evaluate().round() as u32).unwrap_or(1);
-        Dice::new(qty, kind, modifiers)
-    })
-    .parse_next(input)
-}
-
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    fn val(float: f64) -> Box<Expression> {
+        Box::new(Expression::Value(float))
+    }
+    fn parens(expr: Box<Expression>) -> Box<Expression> {
+        Box::new(Expression::Parens(expr))
+    }
+    fn infix(op: Operator, lhs: Box<Expression>, rhs: Box<Expression>) -> Box<Expression> {
+        Box::new(Expression::Infix(op, lhs, rhs))
+    }
+
     #[test]
-    fn test_expression() {}
+    fn test_expression() {
+        let input = "10d6 + 5d3s";
+        let expression = Expression::parse(input).unwrap();
+
+        assert_eq!(expression.to_string(), input);
+    }
+
+    #[test]
+    fn test_infix_expressions() {
+        #[rustfmt::skip]
+        let inputs = [
+            ( "1 + 2", Expression::Infix(Operator::Add, Box::new(Expression::Value(1.0)), Box::new(Expression::Value(2.0))) ),
+            ("3 - 4", Expression::Infix(Operator::Sub, Box::new(Expression::Value(3.0)), Box::new(Expression::Value(4.0)))),
+            ("4 * 5", Expression::Infix(Operator::Mul, Box::new(Expression::Value(4.0)), Box::new(Expression::Value(5.0)))),
+            ("5 / 6", Expression::Infix(Operator::Div, Box::new(Expression::Value(5.0)), Box::new(Expression::Value(6.0)))),
+            ("6 % 7", Expression::Infix(Operator::Rem, Box::new(Expression::Value(6.0)), Box::new(Expression::Value(7.0)))),
+            ("7 ** 8", Expression::Infix(Operator::Pow, Box::new(Expression::Value(7.0)), Box::new(Expression::Value(8.0)))),
+        ];
+
+        for (input, expected) in inputs {
+            let expression = Expression::parse(input).unwrap();
+            assert_eq!(expression, expected);
+            assert_eq!(expression.to_string(), input);
+        }
+    }
+
+    #[test]
+    fn test_infix_pow_variant_expression() {
+        #[rustfmt::skip]
+        let input = "2 ^ 6";
+
+        let expression = Expression::parse(input).unwrap();
+        assert_eq!(expression.to_string(), "2 ** 6");
+        assert_eq!(
+            expression,
+            Expression::Infix(
+                Operator::Pow,
+                Box::new(Expression::Value(2.0)),
+                Box::new(Expression::Value(6.0))
+            )
+        )
+    }
+
+    #[test]
+    fn test_parens_expressions() {
+        #[rustfmt::skip]
+        let inputs = [
+            ( "(1)", *parens(val(1.0))),
+            ( "(1 + 1)", *parens(infix(Operator::Add, val(1.0), val(1.0)))),
+        ];
+
+        for (input, expected) in inputs {
+            let expression = Expression::parse(input).unwrap();
+            assert_eq!(expression, expected);
+            assert_eq!(expression.to_string(), input);
+        }
+    }
+
+    #[test]
+    fn test_fn1_expressions() {
+        #[rustfmt::skip]
+        let inputs = [
+            ( "abs(1)", Expression::Fn1(MathFn1::Abs, parens(val(1.0)))),
+            ( "floor(1 / 5)", Expression::Fn1(MathFn1::Floor, parens(infix(Operator::Div, val(1.0), val(5.0))))),
+            ( "ceil(2)", Expression::Fn1(MathFn1::Ceil, parens(val(2.0)))),
+            ( "round(2)", Expression::Fn1(MathFn1::Round, parens(val(2.0)))),
+            ( "sign(2)", Expression::Fn1(MathFn1::Sign, parens(val(2.0)))),
+            ( "sqrt(2)", Expression::Fn1(MathFn1::Sqrt, parens(val(2.0)))),
+            ( "log(2)", Expression::Fn1(MathFn1::Log, parens(val(2.0)))),
+            ( "exp(2)", Expression::Fn1(MathFn1::Exp, parens(val(2.0)))),
+            ( "sin(2)", Expression::Fn1(MathFn1::Sin, parens(val(2.0)))),
+            ( "cos(2)", Expression::Fn1(MathFn1::Cos, parens(val(2.0)))),
+            ( "tan(2)", Expression::Fn1(MathFn1::Tan, parens(val(2.0)))),
+        ];
+
+        for (input, expected) in inputs {
+            let expression = Expression::parse(input).unwrap();
+            assert_eq!(expression, expected);
+            assert_eq!(expression.to_string(), input);
+        }
+    }
+
+    #[test]
+    fn test_fn2_expressions() {
+        #[rustfmt::skip]
+        let inputs = [
+            ( "min(1, 5)", Expression::Fn2(MathFn2::Min, val(1.0), val(5.0))),
+            ( "max(54, 60483)", Expression::Fn2(MathFn2::Max, val(54.0), val(60483.0))),
+            ( "pow(48, 3)", Expression::Fn2(MathFn2::Pow, val(48.0), val(3.0))),
+        ];
+
+        for (input, expected) in inputs {
+            let expression = Expression::parse(input).unwrap();
+            assert_eq!(expression, expected);
+            assert_eq!(expression.to_string(), input);
+        }
+    }
+
+    #[test]
+    fn test_group_expressions() {
+        #[rustfmt::skip]
+        let inputs = [
+            ( "{1, 5}", Expression::Group(vec![*val(1.0), *val(5.0)], vec![])),
+            ( "{1 % 3, 5}", Expression::Group(vec![*infix(Operator::Rem, val(1.0), val(3.0)), *val(5.0)], vec![])),
+            ( "{1, 5}dl1", Expression::Group(vec![*val(1.0), *val(5.0)], vec![Modifier::Drop(crate::KeepKind::Lowest, 1)])),
+            ( "{1, 5}kh3dl1", Expression::Group(vec![*val(1.0), *val(5.0)], vec![Modifier::Keep(crate::KeepKind::Highest, 3), Modifier::Drop(crate::KeepKind::Lowest, 1)])),
+        ];
+
+        for (input, expected) in inputs {
+            let expression = Expression::parse(input).unwrap();
+            assert_eq!(expression, expected);
+            assert_eq!(expression.to_string(), input);
+        }
+    }
 }

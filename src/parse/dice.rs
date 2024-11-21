@@ -1,14 +1,10 @@
 use winnow::{
-    ascii::{dec_int, dec_uint},
-    combinator::{alt, cut_err, opt, preceded, separated_pair},
-    error::{
-        StrContext::{Expected, Label},
-        StrContextValue::{CharLiteral, StringLiteral},
-    },
+    ascii::{dec_int, dec_uint, multispace0},
+    combinator::{alt, cut_err, delimited, opt, preceded, repeat, separated_pair},
     PResult, Parser,
 };
 
-use super::parse_dice;
+use super::{parse_fn1, parse_fn2, parse_parens, Expression};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiceKind {
@@ -78,6 +74,14 @@ impl Modifier {
         // NOTE: https://doc.rust-lang.org/std/mem/fn.discriminant.html#accessing-the-numeric-value-of-the-discriminant
         unsafe { *<*const _>::from(self).cast::<u8>() }
     }
+
+    pub fn join_all(modifiers: &[Modifier]) -> String {
+        modifiers
+            .iter()
+            .map(|m| m.to_string())
+            .collect::<Vec<_>>()
+            .join("")
+    }
 }
 impl PartialOrd for Modifier {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -94,6 +98,7 @@ pub struct Dice {
 
 impl Dice {
     pub fn new(quantity: u32, kind: DiceKind, mut modifiers: Vec<Modifier>) -> Self {
+        // TODO: maybe only sort them when you apply them?
         modifiers.sort_by_key(|m| m.discriminant());
 
         Self {
@@ -102,31 +107,75 @@ impl Dice {
             modifiers,
         }
     }
-
-    pub fn parse(input: &str) -> Result<Dice, String> {
-        parse_dice.parse(input).map_err(|e| e.to_string())
-    }
 }
 
-pub fn parse_dice_kind(input: &mut &str) -> PResult<DiceKind> {
-    alt((
-        '%'.map(|_| DiceKind::Standard(100))
-            .context(Label("Percentile die"))
-            .context(Expected(CharLiteral('%'))),
-        "F.1"
-            .map(|_| DiceKind::Fudge1)
-            .context(Label("Fudge die variant"))
-            .context(Expected(StringLiteral("F.1"))),
-        "F.2"
-            .map(|_| DiceKind::Fudge2)
-            .context(Label("Standard Fudge die"))
-            .context(Expected(StringLiteral("F.2"))),
-        'F'.map(|_| DiceKind::Fudge2)
-            .context(Label("Standard Fudge die"))
-            .context(Expected(CharLiteral('F'))),
-        dec_uint.map(|i: u32| DiceKind::Standard(i)),
-    ))
-    .context(Label("Die kind"))
+pub fn parse_dice_standard(input: &mut &str) -> PResult<Expression> {
+    separated_pair(
+        opt(parse_dice_quantity),
+        'd',
+        cut_err((parse_dice_sides, repeat(0.., parse_modifier))),
+    )
+    .map(|(qty, (sides, modifiers))| {
+        Expression::DiceStandard(qty.map(Box::new), Box::new(sides), modifiers)
+    })
+    .parse_next(input)
+}
+
+pub fn parse_dice_fudge1(input: &mut &str) -> PResult<Expression> {
+    separated_pair(
+        opt(parse_dice_quantity),
+        "dF.1",
+        cut_err(repeat(0.., parse_modifier)),
+    )
+    .map(|(qty, modifiers)| Expression::DiceFudge1(qty.map(Box::new), modifiers))
+    .parse_next(input)
+}
+
+pub fn parse_dice_fudge2(input: &mut &str) -> PResult<Expression> {
+    separated_pair(
+        opt(parse_dice_quantity),
+        alt(("dF.2", "dF")),
+        cut_err(repeat(0.., parse_modifier)),
+    )
+    .map(|(qty, modifiers)| Expression::DiceFudge2(qty.map(Box::new), modifiers))
+    .parse_next(input)
+}
+
+pub fn parse_dice_percentile(input: &mut &str) -> PResult<Expression> {
+    separated_pair(
+        opt(parse_dice_quantity),
+        "d%",
+        cut_err(repeat(0.., parse_modifier)),
+    )
+    .map(|(qty, modifiers)| Expression::DicePercentile(qty.map(Box::new), modifiers))
+    .parse_next(input)
+}
+
+fn parse_dice_quantity(input: &mut &str) -> PResult<Expression> {
+    delimited(
+        multispace0,
+        alt((
+            parse_fn2,
+            parse_fn1,
+            parse_parens,
+            dec_uint.map(|i: u32| Expression::Value(i as f64)),
+        )),
+        multispace0,
+    )
+    .parse_next(input)
+}
+
+fn parse_dice_sides(input: &mut &str) -> PResult<Expression> {
+    delimited(
+        multispace0,
+        alt((
+            parse_fn2,
+            parse_fn1,
+            parse_parens,
+            dec_uint.map(|int: u32| Expression::Value(int as f64)),
+        )),
+        multispace0,
+    )
     .parse_next(input)
 }
 
@@ -174,6 +223,24 @@ fn exploding(input: &mut &str) -> PResult<Modifier> {
     .parse_next(input)
 }
 
+pub fn parse_group_modifier(input: &mut &str) -> PResult<Modifier> {
+    alt((
+        preceded("kl", cut_err(dec_uint)).map(|n| Modifier::Keep(KeepKind::Lowest, n)),
+        preceded("kh", cut_err(dec_uint)).map(|n| Modifier::Keep(KeepKind::Highest, n)),
+        preceded('k', cut_err(dec_uint)).map(|n| Modifier::Keep(KeepKind::Highest, n)),
+        preceded("dh", cut_err(dec_uint)).map(|n| Modifier::Drop(KeepKind::Highest, n)),
+        preceded("dl", cut_err(dec_uint)).map(|n| Modifier::Drop(KeepKind::Lowest, n)),
+        preceded('d', cut_err(dec_uint)).map(|n| Modifier::Drop(KeepKind::Lowest, n)),
+        "sa".map(|_| Modifier::Sort(SortKind::Ascending)),
+        "sd".map(|_| Modifier::Sort(SortKind::Descending)),
+        's'.map(|_| Modifier::Sort(SortKind::Ascending)),
+        separated_pair(compare_point, 'f', cut_err(compare_point))
+            .map(|(success, failure)| Modifier::TargetFailure(success, failure)),
+        compare_point.map(Modifier::TargetSuccess),
+    ))
+    .parse_next(input)
+}
+
 fn compare_point(input: &mut &str) -> PResult<ComparePoint> {
     alt((
         preceded("<=", cut_err(dec_int)).map(|i: i32| ComparePoint::LessThanOrEqual(f64::from(i))),
@@ -189,13 +256,89 @@ fn compare_point(input: &mut &str) -> PResult<ComparePoint> {
     .parse_next(input)
 }
 
+impl std::fmt::Display for Modifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Modifier::Min(val) => write!(f, "min{val}"),
+            Modifier::Max(val) => write!(f, "max{val}"),
+            Modifier::Exploding(kind, cmp) => write!(f, "{kind}{}", cmp_str(cmp)),
+            Modifier::ReRoll(unique, cmp) => {
+                write!(f, "r{}{}", if *unique { "o" } else { "" }, cmp_str(cmp))
+            }
+            Modifier::Unique(unique, cmp) => {
+                write!(f, "u{}{}", if *unique { "o" } else { "" }, cmp_str(cmp))
+            }
+            Modifier::TargetSuccess(cmp) => write!(f, "{cmp}"),
+            Modifier::TargetFailure(succ, fail) => write!(f, "{succ}f{fail}"),
+            Modifier::CriticalSuccess(cmp) => write!(f, "cs{}", cmp_str(cmp)),
+            Modifier::CriticalFailure(cmp) => write!(f, "cf{}", cmp_str(cmp)),
+            Modifier::Keep(kind, amount) => write!(f, "k{kind}{amount}"),
+            Modifier::Drop(kind, amount) => write!(f, "d{kind}{amount}"),
+            Modifier::Sort(kind) => write!(f, "s{kind}"),
+        }
+    }
+}
+impl std::fmt::Display for ComparePoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ComparePoint::Equal(val) => write!(f, "={val}"),
+            ComparePoint::NotEqual(val) => write!(f, "<>{val}"),
+            ComparePoint::LessThan(val) => write!(f, "<{val}"),
+            ComparePoint::GreaterThan(val) => write!(f, ">{val}"),
+            ComparePoint::LessThanOrEqual(val) => write!(f, "<={val}"),
+            ComparePoint::GreaterThanOrEqual(val) => write!(f, ">={val}"),
+        }
+    }
+}
+// Just because I don't want to keep typing it
+fn cmp_str(cmp: &Option<ComparePoint>) -> String {
+    cmp.map(|c| c.to_string()).unwrap_or_default()
+}
+impl std::fmt::Display for ExplodingKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = match self {
+            ExplodingKind::Standard => "!",
+            ExplodingKind::Penetrating => "!p",
+            ExplodingKind::Compounding => "!!",
+            ExplodingKind::PenetratingCompounding => "!!p",
+        };
+
+        write!(f, "{str}")
+    }
+}
+impl std::fmt::Display for KeepKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Always show the letter because it changes which one can be omitted
+        // depending on if it's Drop or Keep
+        let str = match self {
+            KeepKind::Highest => "h",
+            KeepKind::Lowest => "l",
+        };
+
+        write!(f, "{str}")
+    }
+}
+impl std::fmt::Display for SortKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = match self {
+            SortKind::Ascending => "",
+            SortKind::Descending => "d",
+        };
+
+        write!(f, "{str}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use winnow::Parser;
 
-    use crate::parse::{ComparePoint, Modifier};
+    use crate::{
+        parse::{ComparePoint, Modifier},
+        Expression,
+    };
 
-    use super::{compare_point, parse_modifier, Dice, DiceKind, ExplodingKind, KeepKind, SortKind};
+    use super::{compare_point, parse_modifier, ExplodingKind, KeepKind, SortKind};
 
     /**
      * Parsing dice without modifiers
@@ -203,44 +346,101 @@ mod tests {
 
     #[test]
     fn test_one_standard_d6() {
-        let dice = Dice::parse("1d6").unwrap();
-        assert_eq!(dice.quantity, 1);
-        assert_eq!(dice.kind, DiceKind::Standard(6))
+        let expression = Expression::parse("1d6").unwrap();
+
+        let Expression::DiceStandard(qty, sides, mods) = expression else {
+            panic!()
+        };
+        assert_eq!(*qty.unwrap(), Expression::Value(1.0));
+        assert_eq!(*sides, Expression::Value(6.0));
+        assert_eq!(mods, vec![]);
     }
 
     #[test]
     fn test_one_standard_d6_without_quantity() {
-        let dice = Dice::parse("d6").unwrap();
-        assert_eq!(dice.quantity, 1);
-        assert_eq!(dice.kind, DiceKind::Standard(6))
+        let expression = Expression::parse("d6").unwrap();
+
+        let Expression::DiceStandard(qty, sides, mods) = expression else {
+            panic!()
+        };
+        assert!(qty.is_none());
+        assert_eq!(*sides, Expression::Value(6.0));
+        assert_eq!(mods, vec![]);
     }
 
     #[test]
     fn test_one_percentile_dice() {
-        let dice = Dice::parse("1d%").unwrap();
-        assert_eq!(dice.quantity, 1);
-        assert_eq!(dice.kind, DiceKind::Standard(100))
+        let expression = Expression::parse("1d%").unwrap();
+
+        let Expression::DicePercentile(qty, mods) = expression else {
+            panic!()
+        };
+        assert_eq!(*qty.unwrap(), Expression::Value(1.0));
+        assert_eq!(mods, vec![]);
     }
 
     #[test]
     fn test_one_standard_fudge_die() {
-        let dice = Dice::parse("1dF").unwrap();
-        assert_eq!(dice.quantity, 1);
-        assert_eq!(dice.kind, DiceKind::Fudge2)
+        let expression = Expression::parse("1dF").unwrap();
+
+        let Expression::DiceFudge2(qty, mods) = expression else {
+            panic!()
+        };
+        assert_eq!(*qty.unwrap(), Expression::Value(1.0));
+        assert_eq!(mods, vec![]);
     }
 
     #[test]
     fn test_one_standard_fudge_die_dot_notation() {
-        let dice = Dice::parse("1dF.2").unwrap();
-        assert_eq!(dice.quantity, 1);
-        assert_eq!(dice.kind, DiceKind::Fudge2)
+        let expression = Expression::parse("1dF.2").unwrap();
+
+        let Expression::DiceFudge2(qty, mods) = expression else {
+            panic!()
+        };
+        assert_eq!(*qty.unwrap(), Expression::Value(1.0));
+        assert_eq!(mods, vec![]);
     }
 
     #[test]
     fn test_one_variant_fudge_die() {
-        let dice = Dice::parse("1dF.1").unwrap();
-        assert_eq!(dice.quantity, 1);
-        assert_eq!(dice.kind, DiceKind::Fudge1)
+        let expression = Expression::parse("1dF.1").unwrap();
+
+        let Expression::DiceFudge1(qty, mods) = expression else {
+            panic!()
+        };
+        assert_eq!(*qty.unwrap(), Expression::Value(1.0));
+        assert_eq!(mods, vec![]);
+    }
+
+    /**
+     * Parsing dice with modifiers
+     */
+
+    #[test]
+    fn test_one_standard_d6_with_one_min_modifier() {
+        let expression = Expression::parse("d6min3").unwrap();
+
+        let Expression::DiceStandard(qty, sides, mods) = expression else {
+            panic!()
+        };
+        assert!(qty.is_none());
+        assert_eq!(*sides, Expression::Value(6.0));
+        assert_eq!(mods, vec![Modifier::Min(3)]);
+    }
+
+    #[test]
+    fn test_one_standard_d6_with_min_max_modifiers() {
+        let expression = Expression::parse("d6max4min2").unwrap();
+
+        let Expression::DiceStandard(qty, sides, mods) = expression else {
+            panic!()
+        };
+        assert!(qty.is_none());
+        assert_eq!(*sides, Expression::Value(6.0));
+        // It's fine for the modifiers to not be sorted,
+        // When I print the parsed expression they will be in the same order as the input
+        // making it easy to test the parsed.to_string() to the input
+        assert_eq!(mods, vec![Modifier::Max(4), Modifier::Min(2)]);
     }
 
     /**
@@ -534,33 +734,5 @@ mod tests {
     fn test_compare_point_greater_than_or_equal() {
         let res = compare_point.parse(">=456").unwrap();
         assert_eq!(res, ComparePoint::GreaterThanOrEqual(456.0))
-    }
-
-    /**
-     * Parsing dice with modifiers
-     */
-
-    #[test]
-    fn test_one_standard_d6_with_one_min_modifier() {
-        let dice = Dice::parse("d6min3").unwrap();
-        assert_eq!(dice.quantity, 1);
-        assert_eq!(dice.kind, DiceKind::Standard(6));
-        assert_eq!(dice.modifiers, vec![Modifier::Min(3)]);
-    }
-
-    #[test]
-    fn test_one_standard_d6_with_two_min_modifier() {
-        let dice = Dice::parse("d6min3min2").unwrap();
-        assert_eq!(dice.quantity, 1);
-        assert_eq!(dice.kind, DiceKind::Standard(6));
-        assert_eq!(dice.modifiers, vec![Modifier::Min(3), Modifier::Min(2)]);
-    }
-
-    #[test]
-    fn test_one_standard_d6_with_min_max_modifiers() {
-        let dice = Dice::parse("d6max4min2").unwrap();
-        assert_eq!(dice.quantity, 1);
-        assert_eq!(dice.kind, DiceKind::Standard(6));
-        assert_eq!(dice.modifiers, vec![Modifier::Min(2), Modifier::Max(4)]);
     }
 }
