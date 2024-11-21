@@ -1,5 +1,3 @@
-use std::f64::consts::E;
-
 use rand::Rng;
 
 use crate::{
@@ -115,7 +113,7 @@ impl MathFn1 {
             MathFn1::Round => arg.round(),
             MathFn1::Sign => arg.signum(),
             MathFn1::Sqrt => arg.sqrt(),
-            MathFn1::Log => arg.log(E),
+            MathFn1::Log => arg.log(std::f64::consts::E),
             MathFn1::Exp => arg.exp(),
             MathFn1::Sin => arg.sin(),
             MathFn1::Cos => arg.cos(),

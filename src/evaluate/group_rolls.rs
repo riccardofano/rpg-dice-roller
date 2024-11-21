@@ -32,6 +32,7 @@ pub fn apply_group_modifiers(
     output
 }
 
+// TODO: store the total value of each expression so I don't have to recalculate it constantly
 fn apply_group_keep(output: &mut GroupRollOutput, keep_kind: KeepKind, amount: u32) {
     let mut indices: Vec<usize> = (0..output.expressions.len()).collect();
 

@@ -20,9 +20,6 @@ pub enum Expression {
     DiceFudge2(Option<Box<Expression>>, Vec<Modifier>),
     DicePercentile(Option<Box<Expression>>, Vec<Modifier>),
     Parens(Box<Expression>),
-    // TODO: Groups should be vecs of expressions because you should be allowed to do
-    // math on a dice and that dice should get sorted on the results of the
-    // expression, not only the total value of the rolls
     Group(Vec<Expression>, Vec<Modifier>),
     Infix(Operator, Box<Expression>, Box<Expression>),
     Fn1(MathFn1, Box<Expression>),
@@ -208,5 +205,41 @@ mod tests {
         let expression = Expression::parse(input).unwrap();
 
         assert_eq!(expression.to_string(), input);
+    }
+
+    #[test]
+    fn test_infix_expressions() {
+        #[rustfmt::skip]
+        let inputs = [
+            ( "1 + 2", Expression::Infix(Operator::Add, Box::new(Expression::Value(1.0)), Box::new(Expression::Value(2.0))) ),
+            ("3 - 4", Expression::Infix(Operator::Sub, Box::new(Expression::Value(3.0)), Box::new(Expression::Value(4.0)))),
+            ("4 * 5", Expression::Infix(Operator::Mul, Box::new(Expression::Value(4.0)), Box::new(Expression::Value(5.0)))),
+            ("5 / 6", Expression::Infix(Operator::Div, Box::new(Expression::Value(5.0)), Box::new(Expression::Value(6.0)))),
+            ("6 % 7", Expression::Infix(Operator::Rem, Box::new(Expression::Value(6.0)), Box::new(Expression::Value(7.0)))),
+            ("7 ** 8", Expression::Infix(Operator::Pow, Box::new(Expression::Value(7.0)), Box::new(Expression::Value(8.0)))),
+        ];
+
+        for (input, expected) in inputs {
+            let expression = Expression::parse(input).unwrap();
+            assert_eq!(expression.to_string(), input);
+            assert_eq!(expression, expected)
+        }
+    }
+
+    #[test]
+    fn test_infix_pow_variant_expression() {
+        #[rustfmt::skip]
+        let input = "2 ^ 6";
+
+        let expression = Expression::parse(input).unwrap();
+        assert_eq!(expression.to_string(), "2 ** 6");
+        assert_eq!(
+            expression,
+            Expression::Infix(
+                Operator::Pow,
+                Box::new(Expression::Value(2.0)),
+                Box::new(Expression::Value(6.0))
+            )
+        )
     }
 }
