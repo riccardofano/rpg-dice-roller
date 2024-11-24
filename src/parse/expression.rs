@@ -159,8 +159,6 @@ pub fn parse_fn2<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<BumpExpression<'b
 
 #[cfg(test)]
 mod tests {
-    use bumpalo::Bump;
-
     use crate::NotationParser;
 
     use super::*;
@@ -190,8 +188,6 @@ mod tests {
 
     #[test]
     fn test_infix_expressions() {
-        let bump = Bump::new();
-
         #[rustfmt::skip]
         let inputs = [
             ( "1 + 2", Expression::Infix(Operator::Add, val(1.0), val(2.0))),
