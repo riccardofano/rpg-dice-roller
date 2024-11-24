@@ -9,57 +9,11 @@ use winnow::{
 
 use super::{
     parse_dice_fudge1, parse_dice_fudge2, parse_dice_percentile, parse_dice_standard,
-    parse_group_modifier, Modifier,
+    parse_group_modifier, Expression, MathFn1, MathFn2, Modifier, Operator,
 };
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Expression {
-    Value(f64),
-    DiceStandard(Option<Box<Expression>>, Box<Expression>, Vec<Modifier>),
-    DiceFudge1(Option<Box<Expression>>, Vec<Modifier>),
-    DiceFudge2(Option<Box<Expression>>, Vec<Modifier>),
-    DicePercentile(Option<Box<Expression>>, Vec<Modifier>),
-    Parens(Box<Expression>),
-    Group(Vec<Expression>, Vec<Modifier>),
-    Infix(Operator, Box<Expression>, Box<Expression>),
-    Fn1(MathFn1, Box<Expression>),
-    Fn2(MathFn2, Box<Expression>, Box<Expression>),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Operator {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Rem,
-    Pow,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MathFn1 {
-    Abs,
-    Floor,
-    Ceil,
-    Round,
-    Sign,
-    Sqrt,
-    Log,
-    Exp,
-    Sin,
-    Cos,
-    Tan,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MathFn2 {
-    Min,
-    Max,
-    Pow,
-}
-
 impl Expression {
-    pub fn parse(input: &str) -> Result<Self, String> {
+    pub(crate) fn parse(input: &str) -> Result<Self, String> {
         parse_expr.parse(input).map_err(|e| e.to_string())
     }
 }
@@ -197,6 +151,8 @@ pub fn parse_fn2(input: &mut &str) -> PResult<Expression> {
 
 #[cfg(test)]
 mod tests {
+    use crate::parse::{KeepKind, MathFn2};
+
     use super::*;
 
     fn val(float: f64) -> Box<Expression> {
@@ -314,8 +270,8 @@ mod tests {
         let inputs = [
             ( "{1, 5}", Expression::Group(vec![*val(1.0), *val(5.0)], vec![])),
             ( "{1 % 3, 5}", Expression::Group(vec![*infix(Operator::Rem, val(1.0), val(3.0)), *val(5.0)], vec![])),
-            ( "{1, 5}dl1", Expression::Group(vec![*val(1.0), *val(5.0)], vec![Modifier::Drop(crate::KeepKind::Lowest, 1)])),
-            ( "{1, 5}kh3dl1", Expression::Group(vec![*val(1.0), *val(5.0)], vec![Modifier::Keep(crate::KeepKind::Highest, 3), Modifier::Drop(crate::KeepKind::Lowest, 1)])),
+            ( "{1, 5}dl1", Expression::Group(vec![*val(1.0), *val(5.0)], vec![Modifier::Drop(KeepKind::Lowest, 1)])),
+            ( "{1, 5}kh3dl1", Expression::Group(vec![*val(1.0), *val(5.0)], vec![Modifier::Keep(KeepKind::Highest, 3), Modifier::Drop(KeepKind::Lowest, 1)])),
         ];
 
         for (input, expected) in inputs {

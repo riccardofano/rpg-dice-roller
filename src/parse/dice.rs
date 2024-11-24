@@ -4,67 +4,10 @@ use winnow::{
     PResult, Parser,
 };
 
-use super::{parse_fn1, parse_fn2, parse_parens, Expression};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DiceKind {
-    /// Standard dice with number of sides
-    Standard(u32),
-    /// Fudge/Fate die with 4 blanks, 1 plus, 1 minus
-    Fudge1,
-    /// Fudge/Fate die with 2 blanks, 2 plus, 2 minus
-    Fudge2,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ComparePoint {
-    Equal(f64),
-    NotEqual(f64),
-    LessThan(f64),
-    GreaterThan(f64),
-    LessThanOrEqual(f64),
-    GreaterThanOrEqual(f64),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExplodingKind {
-    Standard,
-    Penetrating,
-    Compounding,
-    PenetratingCompounding,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SortKind {
-    Ascending,
-    Descending,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeepKind {
-    Highest,
-    Lowest,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[repr(u8)]
-pub enum Modifier {
-    Min(i32),
-    Max(i32),
-    Exploding(ExplodingKind, Option<ComparePoint>),
-    /// True means to only re-roll once
-    ReRoll(bool, Option<ComparePoint>),
-    /// True means to only re-roll a unique dice once
-    Unique(bool, Option<ComparePoint>),
-    TargetSuccess(ComparePoint),
-    /// Target failure must always be preceeded by a target success
-    TargetFailure(ComparePoint, ComparePoint),
-    CriticalSuccess(Option<ComparePoint>),
-    CriticalFailure(Option<ComparePoint>),
-    Keep(KeepKind, u32),
-    Drop(KeepKind, u32),
-    Sort(SortKind),
-}
+use super::{
+    parse_fn1, parse_fn2, parse_parens, ComparePoint, Dice, DiceKind, ExplodingKind, Expression,
+    KeepKind, Modifier, SortKind,
+};
 
 impl Modifier {
     pub fn discriminant(&self) -> u8 {
@@ -87,13 +30,6 @@ impl PartialOrd for Modifier {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.discriminant().cmp(&other.discriminant()))
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct Dice {
-    pub(crate) quantity: u32,
-    pub(crate) kind: DiceKind,
-    pub(crate) modifiers: Vec<Modifier>,
 }
 
 impl Dice {

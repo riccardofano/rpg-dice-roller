@@ -1,4 +1,4 @@
-use crate::{parse::SortKind, ComparePoint, KeepKind, Modifier};
+use crate::parse::{ComparePoint, KeepKind, Modifier, SortKind};
 
 use super::{
     expression::RolledExpression,

@@ -32,7 +32,7 @@ impl Dice {
         let (roll_modifiers, post_modifiers) = self.modifiers.split_at(first_post_roll_modifier);
 
         for _ in 0..self.quantity {
-            rolls_info.current = Roll::new(self.roll(rng.gen()));
+            rolls_info.current = Roll::new(self.roll_once(rng.gen()));
 
             for modifier in roll_modifiers {
                 apply_modifier(self, *modifier, &mut rolls_info, rng);
@@ -54,7 +54,7 @@ impl Dice {
         RollOutput::new(rolls_info.all, output_kind)
     }
 
-    pub fn roll(&self, random_value: f32) -> i32 {
+    pub fn roll_once(&self, random_value: f32) -> i32 {
         match self.kind {
             DiceKind::Standard(sides) => (random_value * sides as f32).ceil() as i32,
             DiceKind::Fudge1 => [-1, 0, 0, 0, 0, 1][(random_value * 6_f32).floor() as usize],
@@ -131,7 +131,7 @@ fn apply_exploding(
 ) {
     let should_explode: Box<dyn Fn(f64) -> bool> = match compare_point {
         Some(cmp) => cmp.compare_fn(),
-        None => Box::new(|a| a == dice.max_value().into()),
+        None => Box::new(|a| a == f64::from(dice.max_value())),
     };
 
     match exploding_kind {
@@ -146,7 +146,7 @@ fn apply_exploding(
                     .set_modifier_flag(ModifierFlags::ExplodingStandard as u8);
                 rolls_info.all.push(rolls_info.current);
 
-                let new_roll_value = dice.roll(rng.gen());
+                let new_roll_value = dice.roll_once(rng.gen());
                 rolls_info.current = Roll::new(new_roll_value);
             }
         }
@@ -161,7 +161,7 @@ fn apply_exploding(
                     .set_modifier_flag(ModifierFlags::ExplodingPenetrating as u8);
                 rolls_info.all.push(rolls_info.current);
 
-                let new_roll_value = dice.roll(rng.gen());
+                let new_roll_value = dice.roll_once(rng.gen());
                 rolls_info.current = Roll::new(new_roll_value - 1);
             }
         }
@@ -176,7 +176,7 @@ fn apply_exploding(
                 rolls_info
                     .current
                     .set_modifier_flag(ModifierFlags::ExplodingCompounding as u8);
-                last_roll_value = dice.roll(rng.gen());
+                last_roll_value = dice.roll_once(rng.gen());
                 rolls_info.current.value += last_roll_value;
             }
         }
@@ -191,7 +191,7 @@ fn apply_exploding(
                 rolls_info
                     .current
                     .set_modifier_flag(ModifierFlags::ExplodingPenetratingCompounding as u8);
-                last_roll_value = dice.roll(rng.gen()) - 1;
+                last_roll_value = dice.roll_once(rng.gen()) - 1;
                 rolls_info.current.value += last_roll_value;
             }
         }
@@ -207,7 +207,7 @@ fn apply_reroll(
 ) {
     let should_reroll: Box<dyn Fn(f64) -> bool> = match compare_point {
         Some(cmp) => cmp.compare_fn(),
-        None => Box::new(|a| a == dice.min_value().into()),
+        None => Box::new(|a| a == f64::from(dice.min_value())),
     };
 
     let (iterations, modifier_flag) = if once {
@@ -221,7 +221,7 @@ fn apply_reroll(
         }
 
         rolls_info.current.set_modifier_flag(modifier_flag as u8);
-        rolls_info.current.value = dice.roll(rng.gen());
+        rolls_info.current.value = dice.roll_once(rng.gen());
     }
 }
 
@@ -254,7 +254,7 @@ fn apply_unique(
         }
 
         rolls_info.current.set_modifier_flag(modifier_flag as u8);
-        rolls_info.current.value = dice.roll(rng.gen());
+        rolls_info.current.value = dice.roll_once(rng.gen());
     }
 }
 
@@ -290,7 +290,7 @@ fn apply_critical_success(
 ) {
     let is_critical_success = match compare_point {
         Some(cmp) => cmp.compare_fn(),
-        None => Box::new(|a| a == dice.max_value().into()),
+        None => Box::new(|a| a == f64::from(dice.max_value())),
     };
 
     if is_critical_success(rolls_info.current.value.into()) {
@@ -307,7 +307,7 @@ fn apply_critical_failure(
 ) {
     let is_critical_fail = match compare_point {
         Some(cmp) => cmp.compare_fn(),
-        None => Box::new(|a| a == dice.min_value().into()),
+        None => Box::new(|a| a == f64::from(dice.min_value())),
     };
 
     if is_critical_fail(rolls_info.current.value.into()) {

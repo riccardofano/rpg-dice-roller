@@ -1,9 +1,6 @@
 use rand::Rng;
 
-use crate::{
-    parse::{Expression, MathFn1, MathFn2, Operator},
-    Dice, DiceKind, Modifier,
-};
+use crate::parse::{Dice, DiceKind, Expression, MathFn1, MathFn2, Modifier, Operator};
 
 use super::{
     group_rolls::apply_group_modifiers,
