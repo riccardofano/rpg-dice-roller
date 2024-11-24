@@ -32,7 +32,7 @@ impl Dice {
         let (roll_modifiers, post_modifiers) = self.modifiers.split_at(first_post_roll_modifier);
 
         for _ in 0..self.quantity {
-            rolls_info.current = Roll::new(self.roll_once(rng.gen()));
+            rolls_info.current = Roll::new(self.roll_once(rng));
 
             for modifier in roll_modifiers {
                 apply_modifier(self, *modifier, &mut rolls_info, rng);
@@ -54,7 +54,9 @@ impl Dice {
         RollOutput::new(rolls_info.all, output_kind)
     }
 
-    pub fn roll_once(&self, random_value: f32) -> i32 {
+    pub fn roll_once(&self, rng: &mut impl Rng) -> i32 {
+        let random_value: f32 = rng.gen();
+
         match self.kind {
             DiceKind::Standard(sides) => (random_value * sides as f32).ceil() as i32,
             DiceKind::Fudge1 => [-1, 0, 0, 0, 0, 1][(random_value * 6_f32).floor() as usize],
@@ -146,7 +148,7 @@ fn apply_exploding(
                     .set_modifier_flag(ModifierFlags::ExplodingStandard as u8);
                 rolls_info.all.push(rolls_info.current);
 
-                let new_roll_value = dice.roll_once(rng.gen());
+                let new_roll_value = dice.roll_once(rng);
                 rolls_info.current = Roll::new(new_roll_value);
             }
         }
@@ -161,7 +163,7 @@ fn apply_exploding(
                     .set_modifier_flag(ModifierFlags::ExplodingPenetrating as u8);
                 rolls_info.all.push(rolls_info.current);
 
-                let new_roll_value = dice.roll_once(rng.gen());
+                let new_roll_value = dice.roll_once(rng);
                 rolls_info.current = Roll::new(new_roll_value - 1);
             }
         }
@@ -176,7 +178,7 @@ fn apply_exploding(
                 rolls_info
                     .current
                     .set_modifier_flag(ModifierFlags::ExplodingCompounding as u8);
-                last_roll_value = dice.roll_once(rng.gen());
+                last_roll_value = dice.roll_once(rng);
                 rolls_info.current.value += last_roll_value;
             }
         }
@@ -191,7 +193,7 @@ fn apply_exploding(
                 rolls_info
                     .current
                     .set_modifier_flag(ModifierFlags::ExplodingPenetratingCompounding as u8);
-                last_roll_value = dice.roll_once(rng.gen()) - 1;
+                last_roll_value = dice.roll_once(rng) - 1;
                 rolls_info.current.value += last_roll_value;
             }
         }
@@ -221,7 +223,7 @@ fn apply_reroll(
         }
 
         rolls_info.current.set_modifier_flag(modifier_flag as u8);
-        rolls_info.current.value = dice.roll_once(rng.gen());
+        rolls_info.current.value = dice.roll_once(rng);
     }
 }
 
@@ -254,7 +256,7 @@ fn apply_unique(
         }
 
         rolls_info.current.set_modifier_flag(modifier_flag as u8);
-        rolls_info.current.value = dice.roll_once(rng.gen());
+        rolls_info.current.value = dice.roll_once(rng);
     }
 }
 
