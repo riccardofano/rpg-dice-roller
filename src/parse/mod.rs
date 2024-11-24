@@ -15,7 +15,9 @@ pub struct NotationParser {
 
 impl NotationParser {
     pub fn new() -> Self {
-        Self { bump: Bump::new() }
+        Self {
+            bump: Bump::with_capacity(4096),
+        }
     }
 
     pub fn parse(&mut self, input: &str) -> Result<Expression, String> {

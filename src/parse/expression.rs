@@ -22,33 +22,31 @@ impl<'bp> Expression<'bp> {
 pub fn parse_expr<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<BumpExpression<'bp>> {
     let init = parse_term.parse_next(stream)?;
 
-    let mut parser = repeat(0.., (low_precendence_operator, parse_term));
-    let repeated: Vec<_> = parser.parse_next(stream)?;
-
-    let mut acc = init;
-    for (op, val) in repeated {
-        let acc_ref = stream.state.alloc(acc);
-        let val = stream.state.alloc(val);
-        acc = Expression::Infix(op, acc_ref, val);
-    }
-
-    Ok(acc)
+    repeat(0.., (low_precendence_operator, parse_term))
+        .fold(
+            move || init.clone(),
+            |acc, (op, val): (Operator, Expression)| {
+                let acc_ref = stream.state.alloc(acc);
+                let val = stream.state.alloc(val);
+                Expression::Infix(op, acc_ref, val)
+            },
+        )
+        .parse_next(stream)
 }
 
 fn parse_term<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<BumpExpression<'bp>> {
     let init = parse_factor(stream)?;
 
-    let mut parser = repeat(0.., (high_precendence_operator, parse_factor));
-    let repeated: Vec<_> = parser.parse_next(stream)?;
-
-    let mut acc = init;
-    for (op, val) in repeated {
-        let acc_ref = stream.state.alloc(acc);
-        let val = stream.state.alloc(val);
-        acc = Expression::Infix(op, acc_ref, val);
-    }
-
-    Ok(acc)
+    repeat(0.., (high_precendence_operator, parse_term))
+        .fold(
+            move || init.clone(),
+            |acc, (op, val): (Operator, Expression)| {
+                let acc_ref = stream.state.alloc(acc);
+                let val = stream.state.alloc(val);
+                Expression::Infix(op, acc_ref, val)
+            },
+        )
+        .parse_next(stream)
 }
 
 fn parse_factor<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<BumpExpression<'bp>> {
@@ -94,7 +92,7 @@ fn parse_roll_groups<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<BumpExpressio
     Ok(Expression::Group(expressions, modifiers))
 }
 
-fn low_precendence_operator<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<Operator> {
+fn low_precendence_operator(stream: &mut Stream<'_, '_>) -> PResult<Operator> {
     dispatch!(any;
         '+' => empty.value(Operator::Add),
         '-' => empty.value(Operator::Sub),
@@ -103,7 +101,7 @@ fn low_precendence_operator<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<Operat
     .parse_next(stream)
 }
 
-fn high_precendence_operator<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<Operator> {
+fn high_precendence_operator(stream: &mut Stream<'_, '_>) -> PResult<Operator> {
     dispatch!(any;
         '*' => alt(('*'.value(Operator::Pow), empty.value(Operator::Mul))),
         '/' => empty.value(Operator::Div),
@@ -114,7 +112,7 @@ fn high_precendence_operator<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<Opera
     .parse_next(stream)
 }
 
-fn parse_fn1_name<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<MathFn1> {
+fn parse_fn1_name(stream: &mut Stream<'_, '_>) -> PResult<MathFn1> {
     alt((
         "abs".value(MathFn1::Abs),
         "floor".value(MathFn1::Floor),
@@ -132,7 +130,7 @@ fn parse_fn1_name<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<MathFn1> {
     .parse_next(stream)
 }
 
-fn parse_fn2_name<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<MathFn2> {
+fn parse_fn2_name(stream: &mut Stream<'_, '_>) -> PResult<MathFn2> {
     alt((
         "min".value(MathFn2::Min),
         "max".value(MathFn2::Max),
