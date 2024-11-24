@@ -7,7 +7,7 @@ pub fn benchmark_parsing(c: &mut Criterion) {
         b.iter(|| Expression::parse(black_box("999d444")))
     });
     c.bench_function("parse multiple expressions", |b| {
-        b.iter(|| Expression::parse(black_box("10d6 * (3dF + 3) / 100d%k2d6 + 100}")))
+        b.iter(|| Expression::parse(black_box("10d6 * (3dF + 3) / 100d%k2d6 + 100")))
     });
     c.bench_function("parse expression group", |b| {
         b.iter(|| Expression::parse(black_box("{10d6, 3dF, 100d%k2d6 + 100}")))
