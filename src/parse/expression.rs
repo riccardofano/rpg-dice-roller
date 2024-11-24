@@ -75,9 +75,8 @@ fn parse_roll_groups(input: &mut &str) -> PResult<Expression> {
         repeat(0.., parse_group_modifier),
     )
         .map(
-            |(expressions, mut modifiers): (Vec<Expression>, Vec<Modifier>)| {
-                modifiers.sort_by_key(|m| m.discriminant());
-                Expression::Group(expressions, modifiers)
+            |(expressions, modifiers): (Vec<Expression>, Vec<Modifier>)| {
+                Expression::Group(expressions, Modifier::filter(&modifiers))
             },
         )
         .parse_next(input)
