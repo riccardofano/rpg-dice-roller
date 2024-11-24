@@ -131,7 +131,7 @@ fn apply_exploding(
 ) {
     let should_explode: Box<dyn Fn(f64) -> bool> = match compare_point {
         Some(cmp) => cmp.compare_fn(),
-        None => Box::new(|a| a == dice.max_value().into()),
+        None => Box::new(|a| a == f64::from(dice.max_value())),
     };
 
     match exploding_kind {
@@ -207,7 +207,7 @@ fn apply_reroll(
 ) {
     let should_reroll: Box<dyn Fn(f64) -> bool> = match compare_point {
         Some(cmp) => cmp.compare_fn(),
-        None => Box::new(|a| a == dice.min_value().into()),
+        None => Box::new(|a| a == f64::from(dice.min_value())),
     };
 
     let (iterations, modifier_flag) = if once {
@@ -290,7 +290,7 @@ fn apply_critical_success(
 ) {
     let is_critical_success = match compare_point {
         Some(cmp) => cmp.compare_fn(),
-        None => Box::new(|a| a == dice.max_value().into()),
+        None => Box::new(|a| a == f64::from(dice.max_value())),
     };
 
     if is_critical_success(rolls_info.current.value.into()) {
@@ -307,7 +307,7 @@ fn apply_critical_failure(
 ) {
     let is_critical_fail = match compare_point {
         Some(cmp) => cmp.compare_fn(),
-        None => Box::new(|a| a == dice.min_value().into()),
+        None => Box::new(|a| a == f64::from(dice.min_value())),
     };
 
     if is_critical_fail(rolls_info.current.value.into()) {

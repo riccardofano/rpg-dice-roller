@@ -10,27 +10,26 @@ use super::{
     roll::{GroupRollOutput, RollOutput},
 };
 
-impl Expression {
-    pub fn roll(self, rng: &mut impl Rng) -> RolledExpression {
+impl<'bp> Expression<'bp> {
+    pub fn roll(&self, rng: &mut impl Rng) -> RolledExpression {
         match self {
-            Expression::Value(float) => RolledExpression::Value(float),
+            Expression::Value(float) => RolledExpression::Value(*float),
             Expression::DiceFudge1(qty, mods) => {
-                let dice = dice_from_expression(qty.map(|q| *q), DiceKind::Fudge1, mods, rng);
+                let dice = dice_from_expression(*qty, DiceKind::Fudge1, mods.to_vec(), rng);
                 RolledExpression::DiceRoll(dice.roll_all(rng))
             }
             Expression::DiceFudge2(qty, mods) => {
-                let dice = dice_from_expression(qty.map(|q| *q), DiceKind::Fudge2, mods, rng);
+                let dice = dice_from_expression(*qty, DiceKind::Fudge2, mods.to_vec(), rng);
                 RolledExpression::DiceRoll(dice.roll_all(rng))
             }
             Expression::DicePercentile(qty, mods) => {
-                let dice =
-                    dice_from_expression(qty.map(|q| *q), DiceKind::Standard(100), mods, rng);
+                let dice = dice_from_expression(*qty, DiceKind::Standard(100), mods.to_vec(), rng);
                 RolledExpression::DiceRoll(dice.roll_all(rng))
             }
             Expression::DiceStandard(qty, sides, mods) => {
                 let sides = sides.roll(rng).value().round() as u32;
                 let dice =
-                    dice_from_expression(qty.map(|q| *q), DiceKind::Standard(sides), mods, rng);
+                    dice_from_expression(*qty, DiceKind::Standard(sides), mods.to_vec(), rng);
                 RolledExpression::DiceRoll(dice.roll_all(rng))
             }
             Expression::Parens(expr) => expr.roll(rng),
@@ -41,11 +40,11 @@ impl Expression {
                 RolledExpression::Group(output)
             }
             Expression::Infix(op, lhs, rhs) => {
-                RolledExpression::Infix(op, Box::new(lhs.roll(rng)), Box::new(rhs.roll(rng)))
+                RolledExpression::Infix(*op, Box::new(lhs.roll(rng)), Box::new(rhs.roll(rng)))
             }
-            Expression::Fn1(f, arg) => RolledExpression::Fn1(f, Box::new(arg.roll(rng))),
+            Expression::Fn1(f, arg) => RolledExpression::Fn1(*f, Box::new(arg.roll(rng))),
             Expression::Fn2(f, arg1, arg2) => {
-                RolledExpression::Fn2(f, Box::new(arg1.roll(rng)), Box::new(arg2.roll(rng)))
+                RolledExpression::Fn2(*f, Box::new(arg1.roll(rng)), Box::new(arg2.roll(rng)))
             }
         }
     }
@@ -77,7 +76,7 @@ impl RolledExpression {
 }
 
 fn dice_from_expression(
-    quantity: Option<Expression>,
+    quantity: Option<&Expression>,
     kind: DiceKind,
     modifiers: Vec<Modifier>,
     rng: &mut impl Rng,
@@ -135,7 +134,7 @@ impl MathFn2 {
     }
 }
 
-impl std::fmt::Display for Expression {
+impl std::fmt::Display for &Expression<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Expression::Value(val) => write!(f, "{val}"),

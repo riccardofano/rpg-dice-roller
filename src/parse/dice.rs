@@ -4,27 +4,10 @@ use winnow::{
     PResult, Parser,
 };
 
-use super::{parse_fn1, parse_fn2, parse_parens, Expression};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DiceKind {
-    /// Standard dice with number of sides
-    Standard(u32),
-    /// Fudge/Fate die with 4 blanks, 1 plus, 1 minus
-    Fudge1,
-    /// Fudge/Fate die with 2 blanks, 2 plus, 2 minus
-    Fudge2,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ComparePoint {
-    Equal(f64),
-    NotEqual(f64),
-    LessThan(f64),
-    GreaterThan(f64),
-    LessThanOrEqual(f64),
-    GreaterThanOrEqual(f64),
-}
+use super::{
+    parse_fn1, parse_fn2, parse_parens, uint_expr, BumpExpression, ComparePoint, Dice, DiceKind,
+    Expression, Stream,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExplodingKind {
@@ -89,13 +72,6 @@ impl PartialOrd for Modifier {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Dice {
-    pub(crate) quantity: u32,
-    pub(crate) kind: DiceKind,
-    pub(crate) modifiers: Vec<Modifier>,
-}
-
 impl Dice {
     pub fn new(quantity: u32, kind: DiceKind, mut modifiers: Vec<Modifier>) -> Self {
         // TODO: maybe only sort them when you apply them?
@@ -109,77 +85,79 @@ impl Dice {
     }
 }
 
-pub fn parse_dice_standard(input: &mut &str) -> PResult<Expression> {
-    separated_pair(
+pub fn parse_dice_standard<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<BumpExpression<'bp>> {
+    let mut parser = separated_pair(
         opt(parse_dice_quantity),
         'd',
         cut_err((parse_dice_sides, repeat(0.., parse_modifier))),
-    )
-    .map(|(qty, (sides, modifiers))| {
-        Expression::DiceStandard(qty.map(Box::new), Box::new(sides), modifiers)
-    })
-    .parse_next(input)
+    );
+
+    let (qty, (sides, modifiers)): (_, (_, Vec<_>)) = parser.parse_next(stream)?;
+
+    let qty = qty.map(|q| &*stream.state.alloc(q));
+    let sides = stream.state.alloc(sides);
+
+    Ok(Expression::DiceStandard(qty, sides, modifiers))
 }
 
-pub fn parse_dice_fudge1(input: &mut &str) -> PResult<Expression> {
-    separated_pair(
+pub fn parse_dice_fudge1<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<BumpExpression<'bp>> {
+    let mut parser = separated_pair(
         opt(parse_dice_quantity),
         "dF.1",
         cut_err(repeat(0.., parse_modifier)),
-    )
-    .map(|(qty, modifiers)| Expression::DiceFudge1(qty.map(Box::new), modifiers))
-    .parse_next(input)
+    );
+
+    let (qty, modifiers) = parser.parse_next(stream)?;
+    let qty = qty.map(|q| &*stream.state.alloc(q));
+
+    Ok(Expression::DiceFudge1(qty, modifiers))
 }
 
-pub fn parse_dice_fudge2(input: &mut &str) -> PResult<Expression> {
-    separated_pair(
+pub fn parse_dice_fudge2<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<BumpExpression<'bp>> {
+    let mut parser = separated_pair(
         opt(parse_dice_quantity),
         alt(("dF.2", "dF")),
         cut_err(repeat(0.., parse_modifier)),
-    )
-    .map(|(qty, modifiers)| Expression::DiceFudge2(qty.map(Box::new), modifiers))
-    .parse_next(input)
+    );
+
+    let (qty, modifiers) = parser.parse_next(stream)?;
+    let qty = qty.map(|q| &*stream.state.alloc(q));
+
+    Ok(Expression::DiceFudge2(qty, modifiers))
 }
 
-pub fn parse_dice_percentile(input: &mut &str) -> PResult<Expression> {
-    separated_pair(
+pub fn parse_dice_percentile<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<BumpExpression<'bp>> {
+    let mut parser = separated_pair(
         opt(parse_dice_quantity),
         "d%",
         cut_err(repeat(0.., parse_modifier)),
-    )
-    .map(|(qty, modifiers)| Expression::DicePercentile(qty.map(Box::new), modifiers))
-    .parse_next(input)
+    );
+
+    let (qty, modifiers) = parser.parse_next(stream)?;
+    let qty = qty.map(|q| &*stream.state.alloc(q));
+
+    Ok(Expression::DicePercentile(qty, modifiers))
 }
 
-fn parse_dice_quantity(input: &mut &str) -> PResult<Expression> {
+fn parse_dice_quantity<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<BumpExpression<'bp>> {
     delimited(
         multispace0,
-        alt((
-            parse_fn2,
-            parse_fn1,
-            parse_parens,
-            dec_uint.map(|i: u32| Expression::Value(i as f64)),
-        )),
+        alt((parse_fn2, parse_fn1, parse_parens, uint_expr)),
         multispace0,
     )
-    .parse_next(input)
+    .parse_next(stream)
 }
 
-fn parse_dice_sides(input: &mut &str) -> PResult<Expression> {
+fn parse_dice_sides<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<BumpExpression<'bp>> {
     delimited(
         multispace0,
-        alt((
-            parse_fn2,
-            parse_fn1,
-            parse_parens,
-            dec_uint.map(|int: u32| Expression::Value(int as f64)),
-        )),
+        alt((parse_fn2, parse_fn1, parse_parens, uint_expr)),
         multispace0,
     )
-    .parse_next(input)
+    .parse_next(stream)
 }
 
-pub fn parse_modifier(input: &mut &str) -> PResult<Modifier> {
+pub fn parse_modifier(stream: &mut Stream<'_, '_>) -> PResult<Modifier> {
     alt((
         preceded("min", cut_err(dec_int)).map(Modifier::Min),
         preceded("max", cut_err(dec_int)).map(Modifier::Max),
@@ -207,10 +185,10 @@ pub fn parse_modifier(input: &mut &str) -> PResult<Modifier> {
             .map(|(success, failure)| Modifier::TargetFailure(success, failure)),
         compare_point.map(Modifier::TargetSuccess),
     ))
-    .parse_next(input)
+    .parse_next(stream)
 }
 
-fn exploding(input: &mut &str) -> PResult<Modifier> {
+fn exploding(stream: &mut Stream<'_, '_>) -> PResult<Modifier> {
     alt((
         preceded("!p", opt(compare_point))
             .map(|cp| Modifier::Exploding(ExplodingKind::PenetratingCompounding, cp)),
@@ -220,10 +198,10 @@ fn exploding(input: &mut &str) -> PResult<Modifier> {
             .map(|cp| Modifier::Exploding(ExplodingKind::Compounding, cp)),
         opt(compare_point).map(|cp| Modifier::Exploding(ExplodingKind::Standard, cp)),
     ))
-    .parse_next(input)
+    .parse_next(stream)
 }
 
-pub fn parse_group_modifier(input: &mut &str) -> PResult<Modifier> {
+pub fn parse_group_modifier(stream: &mut Stream<'_, '_>) -> PResult<Modifier> {
     alt((
         preceded("kl", cut_err(dec_uint)).map(|n| Modifier::Keep(KeepKind::Lowest, n)),
         preceded("kh", cut_err(dec_uint)).map(|n| Modifier::Keep(KeepKind::Highest, n)),
@@ -238,10 +216,10 @@ pub fn parse_group_modifier(input: &mut &str) -> PResult<Modifier> {
             .map(|(success, failure)| Modifier::TargetFailure(success, failure)),
         compare_point.map(Modifier::TargetSuccess),
     ))
-    .parse_next(input)
+    .parse_next(stream)
 }
 
-fn compare_point(input: &mut &str) -> PResult<ComparePoint> {
+fn compare_point(stream: &mut Stream<'_, '_>) -> PResult<ComparePoint> {
     alt((
         preceded("<=", cut_err(dec_int)).map(|i: i32| ComparePoint::LessThanOrEqual(f64::from(i))),
         preceded(">=", cut_err(dec_int))
@@ -253,7 +231,7 @@ fn compare_point(input: &mut &str) -> PResult<ComparePoint> {
         preceded('<', cut_err(dec_int)).map(|i: i32| ComparePoint::LessThan(f64::from(i))),
         preceded('>', cut_err(dec_int)).map(|i: i32| ComparePoint::GreaterThan(f64::from(i))),
     ))
-    .parse_next(input)
+    .parse_next(stream)
 }
 
 impl std::fmt::Display for Modifier {
@@ -331,408 +309,408 @@ impl std::fmt::Display for SortKind {
 
 #[cfg(test)]
 mod tests {
-    use winnow::Parser;
-
-    use crate::{
-        parse::{ComparePoint, Modifier},
-        Expression,
-    };
-
-    use super::{compare_point, parse_modifier, ExplodingKind, KeepKind, SortKind};
-
-    /**
-     * Parsing dice without modifiers
-     */
-
-    #[test]
-    fn test_one_standard_d6() {
-        let expression = Expression::parse("1d6").unwrap();
-
-        let Expression::DiceStandard(qty, sides, mods) = expression else {
-            panic!()
-        };
-        assert_eq!(*qty.unwrap(), Expression::Value(1.0));
-        assert_eq!(*sides, Expression::Value(6.0));
-        assert_eq!(mods, vec![]);
-    }
-
-    #[test]
-    fn test_one_standard_d6_without_quantity() {
-        let expression = Expression::parse("d6").unwrap();
-
-        let Expression::DiceStandard(qty, sides, mods) = expression else {
-            panic!()
-        };
-        assert!(qty.is_none());
-        assert_eq!(*sides, Expression::Value(6.0));
-        assert_eq!(mods, vec![]);
-    }
-
-    #[test]
-    fn test_one_percentile_dice() {
-        let expression = Expression::parse("1d%").unwrap();
-
-        let Expression::DicePercentile(qty, mods) = expression else {
-            panic!()
-        };
-        assert_eq!(*qty.unwrap(), Expression::Value(1.0));
-        assert_eq!(mods, vec![]);
-    }
-
-    #[test]
-    fn test_one_standard_fudge_die() {
-        let expression = Expression::parse("1dF").unwrap();
-
-        let Expression::DiceFudge2(qty, mods) = expression else {
-            panic!()
-        };
-        assert_eq!(*qty.unwrap(), Expression::Value(1.0));
-        assert_eq!(mods, vec![]);
-    }
-
-    #[test]
-    fn test_one_standard_fudge_die_dot_notation() {
-        let expression = Expression::parse("1dF.2").unwrap();
-
-        let Expression::DiceFudge2(qty, mods) = expression else {
-            panic!()
-        };
-        assert_eq!(*qty.unwrap(), Expression::Value(1.0));
-        assert_eq!(mods, vec![]);
-    }
-
-    #[test]
-    fn test_one_variant_fudge_die() {
-        let expression = Expression::parse("1dF.1").unwrap();
-
-        let Expression::DiceFudge1(qty, mods) = expression else {
-            panic!()
-        };
-        assert_eq!(*qty.unwrap(), Expression::Value(1.0));
-        assert_eq!(mods, vec![]);
-    }
-
-    /**
-     * Parsing dice with modifiers
-     */
-
-    #[test]
-    fn test_one_standard_d6_with_one_min_modifier() {
-        let expression = Expression::parse("d6min3").unwrap();
-
-        let Expression::DiceStandard(qty, sides, mods) = expression else {
-            panic!()
-        };
-        assert!(qty.is_none());
-        assert_eq!(*sides, Expression::Value(6.0));
-        assert_eq!(mods, vec![Modifier::Min(3)]);
-    }
-
-    #[test]
-    fn test_one_standard_d6_with_min_max_modifiers() {
-        let expression = Expression::parse("d6max4min2").unwrap();
-
-        let Expression::DiceStandard(qty, sides, mods) = expression else {
-            panic!()
-        };
-        assert!(qty.is_none());
-        assert_eq!(*sides, Expression::Value(6.0));
-        // It's fine for the modifiers to not be sorted,
-        // When I print the parsed expression they will be in the same order as the input
-        // making it easy to test the parsed.to_string() to the input
-        assert_eq!(mods, vec![Modifier::Max(4), Modifier::Min(2)]);
-    }
-
-    /**
-     * Parsing modifiers alone
-     */
-
-    #[test]
-    fn test_modifier_min() {
-        let res = parse_modifier.parse("min3").unwrap();
-        assert_eq!(res, Modifier::Min(3))
-    }
-
-    #[test]
-    fn test_modifier_min_missing_amount() {
-        assert!(parse_modifier.parse("min").is_err())
-    }
-
-    #[test]
-    fn test_modifier_max() {
-        let res = parse_modifier.parse("max6").unwrap();
-        assert_eq!(res, Modifier::Max(6))
-    }
-
-    #[test]
-    fn test_modifier_max_missing_amount() {
-        assert!(parse_modifier.parse("maxa").is_err())
-    }
-
-    #[test]
-    fn test_modifier_exploding_standard() {
-        let res = parse_modifier.parse("!").unwrap();
-        assert_eq!(res, Modifier::Exploding(ExplodingKind::Standard, None))
-    }
-
-    #[test]
-    fn test_modifier_exploding_standard_not_equal() {
-        let res = parse_modifier.parse("!<>8").unwrap();
-        let expected =
-            Modifier::Exploding(ExplodingKind::Standard, Some(ComparePoint::NotEqual(8.0)));
-        assert_eq!(res, expected)
-    }
-
-    #[test]
-    fn test_modifier_penetrating_standard() {
-        let res = parse_modifier.parse("!p").unwrap();
-        assert_eq!(res, Modifier::Exploding(ExplodingKind::Penetrating, None))
-    }
-
-    #[test]
-    fn test_modifier_penetrating_standard_less_than() {
-        let res = parse_modifier.parse("!p<54").unwrap();
-        let expected = Modifier::Exploding(
-            ExplodingKind::Penetrating,
-            Some(ComparePoint::LessThan(54.0)),
-        );
-        assert_eq!(res, expected)
-    }
-
-    #[test]
-    fn test_modifier_compounding_standard() {
-        let res = parse_modifier.parse("!!").unwrap();
-        assert_eq!(res, Modifier::Exploding(ExplodingKind::Compounding, None))
-    }
-
-    #[test]
-    fn test_modifier_compounding_standard_greater_than() {
-        let res = parse_modifier.parse("!!>67").unwrap();
-        let expected = Modifier::Exploding(
-            ExplodingKind::Compounding,
-            Some(ComparePoint::GreaterThan(67.0)),
-        );
-        assert_eq!(res, expected)
-    }
-
-    #[test]
-    fn test_modifier_penetrating_compounding_standard() {
-        let res = parse_modifier.parse("!!p").unwrap();
-        assert_eq!(
-            res,
-            Modifier::Exploding(ExplodingKind::PenetratingCompounding, None)
-        )
-    }
-
-    #[test]
-    fn test_modifier_penetrating_compounding_standard_greater_or_equal() {
-        let res = parse_modifier.parse("!!p>=7").unwrap();
-        let expected = Modifier::Exploding(
-            ExplodingKind::PenetratingCompounding,
-            Some(ComparePoint::GreaterThanOrEqual(7.0)),
-        );
-        assert_eq!(res, expected)
-    }
-
-    #[test]
-    fn test_modifier_reroll() {
-        let res = parse_modifier.parse("r").unwrap();
-        assert_eq!(res, Modifier::ReRoll(false, None))
-    }
-
-    #[test]
-    fn test_modifier_reroll_equals() {
-        let res = parse_modifier.parse("r=6").unwrap();
-        assert_eq!(res, Modifier::ReRoll(false, Some(ComparePoint::Equal(6.0))))
-    }
-
-    #[test]
-    fn test_modifier_reroll_once() {
-        let res = parse_modifier.parse("ro").unwrap();
-        assert_eq!(res, Modifier::ReRoll(true, None))
-    }
-
-    #[test]
-    fn test_modifier_reroll_once_less_than() {
-        let res = parse_modifier.parse("ro<3").unwrap();
-        assert_eq!(
-            res,
-            Modifier::ReRoll(true, Some(ComparePoint::LessThan(3.0)))
-        )
-    }
-
-    #[test]
-    fn test_modifier_unique() {
-        let res = parse_modifier.parse("u").unwrap();
-        assert_eq!(res, Modifier::Unique(false, None))
-    }
-
-    #[test]
-    fn test_modifier_unique_equals() {
-        let res = parse_modifier.parse("u=5").unwrap();
-        assert_eq!(res, Modifier::Unique(false, Some(ComparePoint::Equal(5.0))))
-    }
-
-    #[test]
-    fn test_modifier_unique_once() {
-        let res = parse_modifier.parse("uo").unwrap();
-        assert_eq!(res, Modifier::Unique(true, None))
-    }
-
-    #[test]
-    fn test_modifier_unique_once_greater() {
-        let res = parse_modifier.parse("uo>6").unwrap();
-        let expected = Modifier::Unique(true, Some(ComparePoint::GreaterThan(6.0)));
-        assert_eq!(res, expected)
-    }
-
-    #[test]
-    fn test_modifier_keep_default() {
-        let res = parse_modifier.parse("k2").unwrap();
-        assert_eq!(res, Modifier::Keep(KeepKind::Highest, 2))
-    }
-
-    #[test]
-    fn test_modifier_keep_default_missing_amount() {
-        assert!(parse_modifier.parse("k").is_err())
-    }
-
-    #[test]
-    fn test_modifier_keep_highest() {
-        let res = parse_modifier.parse("kh3").unwrap();
-        assert_eq!(res, Modifier::Keep(KeepKind::Highest, 3))
-    }
-
-    #[test]
-    fn test_modifier_keep_highest_missing_amount() {
-        assert!(parse_modifier.parse("kh").is_err())
-    }
-
-    #[test]
-    fn test_modifier_keep_lowest() {
-        let res = parse_modifier.parse("kl4").unwrap();
-        assert_eq!(res, Modifier::Keep(KeepKind::Lowest, 4))
-    }
-
-    #[test]
-    fn test_modifier_keep_lowest_missing_amount() {
-        assert!(parse_modifier.parse("kl").is_err())
-    }
-
-    #[test]
-    fn test_modifier_drop_default() {
-        let res = parse_modifier.parse("d2").unwrap();
-        assert_eq!(res, Modifier::Drop(KeepKind::Lowest, 2))
-    }
-
-    #[test]
-    fn test_modifier_drop_default_missing_amount() {
-        assert!(parse_modifier.parse("d").is_err())
-    }
-
-    #[test]
-    fn test_modifier_drop_highest() {
-        let res = parse_modifier.parse("dh3").unwrap();
-        assert_eq!(res, Modifier::Drop(KeepKind::Highest, 3))
-    }
-
-    #[test]
-    fn test_modifier_drop_highest_missing_amount() {
-        assert!(parse_modifier.parse("dh").is_err())
-    }
-
-    #[test]
-    fn test_modifier_drop_lowest() {
-        let res = parse_modifier.parse("dl4").unwrap();
-        assert_eq!(res, Modifier::Drop(KeepKind::Lowest, 4))
-    }
-
-    #[test]
-    fn test_modifier_drop_lowest_missing_amount() {
-        assert!(parse_modifier.parse("dl").is_err())
-    }
-
-    #[test]
-    fn test_modifier_critical_success() {
-        let res = parse_modifier.parse("cs").unwrap();
-        assert_eq!(res, Modifier::CriticalSuccess(None))
-    }
-
-    #[test]
-    fn test_modifier_critical_success_less_than_or_equal() {
-        let res = parse_modifier.parse("cs<=5").unwrap();
-        let expected = Modifier::CriticalSuccess(Some(ComparePoint::LessThanOrEqual(5.0)));
-        assert_eq!(res, expected)
-    }
-
-    #[test]
-    fn test_modifier_critical_failure() {
-        let res = parse_modifier.parse("cf").unwrap();
-        assert_eq!(res, Modifier::CriticalFailure(None))
-    }
-
-    #[test]
-    fn test_modifier_critical_failure_greater_than_or_equal() {
-        let res = parse_modifier.parse("cf>=1").unwrap();
-        let expected = Modifier::CriticalFailure(Some(ComparePoint::GreaterThanOrEqual(1.0)));
-        assert_eq!(res, expected)
-    }
-
-    #[test]
-    fn test_modifier_sort_default() {
-        let res = parse_modifier.parse("s").unwrap();
-        assert_eq!(res, Modifier::Sort(SortKind::Ascending))
-    }
-
-    #[test]
-    fn test_modifier_sort_ascending() {
-        let res = parse_modifier.parse("sa").unwrap();
-        assert_eq!(res, Modifier::Sort(SortKind::Ascending))
-    }
-
-    #[test]
-    fn test_modifier_sort_descending() {
-        let res = parse_modifier.parse("sd").unwrap();
-        assert_eq!(res, Modifier::Sort(SortKind::Descending))
-    }
-
-    /**
-     * Parsing compare points alone
-     */
-
-    #[test]
-    fn test_compare_point_equals() {
-        let res = compare_point.parse("=3").unwrap();
-        assert_eq!(res, ComparePoint::Equal(3.0))
-    }
-
-    #[test]
-    fn test_compare_point_not_equals() {
-        let res = compare_point.parse("<>69").unwrap();
-        assert_eq!(res, ComparePoint::NotEqual(69.0))
-    }
-
-    #[test]
-    fn test_compare_point_less_than() {
-        let res = compare_point.parse("<123").unwrap();
-        assert_eq!(res, ComparePoint::LessThan(123.0))
-    }
-
-    #[test]
-    fn test_compare_point_greater_than() {
-        let res = compare_point.parse(">123").unwrap();
-        assert_eq!(res, ComparePoint::GreaterThan(123.0))
-    }
-
-    #[test]
-    fn test_compare_point_less_than_or_equal() {
-        let res = compare_point.parse("<=123").unwrap();
-        assert_eq!(res, ComparePoint::LessThanOrEqual(123.0))
-    }
-
-    #[test]
-    fn test_compare_point_greater_than_or_equal() {
-        let res = compare_point.parse(">=456").unwrap();
-        assert_eq!(res, ComparePoint::GreaterThanOrEqual(456.0))
-    }
+    // use winnow::Parser;
+
+    // use crate::{
+    //     parse::{ComparePoint, Modifier},
+    //     Expression,
+    // };
+
+    // use super::{compare_point, parse_modifier, ExplodingKind, KeepKind, SortKind};
+
+    // /**
+    //  * Parsing dice without modifiers
+    //  */
+
+    // #[test]
+    // fn test_one_standard_d6() {
+    //     let expression = Expression::parse("1d6").unwrap();
+
+    //     let Expression::DiceStandard(qty, sides, mods) = expression else {
+    //         panic!()
+    //     };
+    //     assert_eq!(*qty.unwrap(), Expression::Value(1.0));
+    //     assert_eq!(*sides, Expression::Value(6.0));
+    //     assert_eq!(mods, vec![]);
+    // }
+
+    // #[test]
+    // fn test_one_standard_d6_without_quantity() {
+    //     let expression = Expression::parse("d6").unwrap();
+
+    //     let Expression::DiceStandard(qty, sides, mods) = expression else {
+    //         panic!()
+    //     };
+    //     assert!(qty.is_none());
+    //     assert_eq!(*sides, Expression::Value(6.0));
+    //     assert_eq!(mods, vec![]);
+    // }
+
+    // #[test]
+    // fn test_one_percentile_dice() {
+    //     let expression = Expression::parse("1d%").unwrap();
+
+    //     let Expression::DicePercentile(qty, mods) = expression else {
+    //         panic!()
+    //     };
+    //     assert_eq!(*qty.unwrap(), Expression::Value(1.0));
+    //     assert_eq!(mods, vec![]);
+    // }
+
+    // #[test]
+    // fn test_one_standard_fudge_die() {
+    //     let expression = Expression::parse("1dF").unwrap();
+
+    //     let Expression::DiceFudge2(qty, mods) = expression else {
+    //         panic!()
+    //     };
+    //     assert_eq!(*qty.unwrap(), Expression::Value(1.0));
+    //     assert_eq!(mods, vec![]);
+    // }
+
+    // #[test]
+    // fn test_one_standard_fudge_die_dot_notation() {
+    //     let expression = Expression::parse("1dF.2").unwrap();
+
+    //     let Expression::DiceFudge2(qty, mods) = expression else {
+    //         panic!()
+    //     };
+    //     assert_eq!(*qty.unwrap(), Expression::Value(1.0));
+    //     assert_eq!(mods, vec![]);
+    // }
+
+    // #[test]
+    // fn test_one_variant_fudge_die() {
+    //     let expression = Expression::parse("1dF.1").unwrap();
+
+    //     let Expression::DiceFudge1(qty, mods) = expression else {
+    //         panic!()
+    //     };
+    //     assert_eq!(*qty.unwrap(), Expression::Value(1.0));
+    //     assert_eq!(mods, vec![]);
+    // }
+
+    // /**
+    //  * Parsing dice with modifiers
+    //  */
+
+    // #[test]
+    // fn test_one_standard_d6_with_one_min_modifier() {
+    //     let expression = Expression::parse("d6min3").unwrap();
+
+    //     let Expression::DiceStandard(qty, sides, mods) = expression else {
+    //         panic!()
+    //     };
+    //     assert!(qty.is_none());
+    //     assert_eq!(*sides, Expression::Value(6.0));
+    //     assert_eq!(mods, vec![Modifier::Min(3)]);
+    // }
+
+    // #[test]
+    // fn test_one_standard_d6_with_min_max_modifiers() {
+    //     let expression = Expression::parse("d6max4min2").unwrap();
+
+    //     let Expression::DiceStandard(qty, sides, mods) = expression else {
+    //         panic!()
+    //     };
+    //     assert!(qty.is_none());
+    //     assert_eq!(*sides, Expression::Value(6.0));
+    //     // It's fine for the modifiers to not be sorted,
+    //     // When I print the parsed expression they will be in the same order as the input
+    //     // making it easy to test the parsed.to_string() to the input
+    //     assert_eq!(mods, vec![Modifier::Max(4), Modifier::Min(2)]);
+    // }
+
+    // /**
+    //  * Parsing modifiers alone
+    //  */
+
+    // #[test]
+    // fn test_modifier_min() {
+    //     let res = parse_modifier.parse("min3").unwrap();
+    //     assert_eq!(res, Modifier::Min(3))
+    // }
+
+    // #[test]
+    // fn test_modifier_min_missing_amount() {
+    //     assert!(parse_modifier.parse("min").is_err())
+    // }
+
+    // #[test]
+    // fn test_modifier_max() {
+    //     let res = parse_modifier.parse("max6").unwrap();
+    //     assert_eq!(res, Modifier::Max(6))
+    // }
+
+    // #[test]
+    // fn test_modifier_max_missing_amount() {
+    //     assert!(parse_modifier.parse("maxa").is_err())
+    // }
+
+    // #[test]
+    // fn test_modifier_exploding_standard() {
+    //     let res = parse_modifier.parse("!").unwrap();
+    //     assert_eq!(res, Modifier::Exploding(ExplodingKind::Standard, None))
+    // }
+
+    // #[test]
+    // fn test_modifier_exploding_standard_not_equal() {
+    //     let res = parse_modifier.parse("!<>8").unwrap();
+    //     let expected =
+    //         Modifier::Exploding(ExplodingKind::Standard, Some(ComparePoint::NotEqual(8.0)));
+    //     assert_eq!(res, expected)
+    // }
+
+    // #[test]
+    // fn test_modifier_penetrating_standard() {
+    //     let res = parse_modifier.parse("!p").unwrap();
+    //     assert_eq!(res, Modifier::Exploding(ExplodingKind::Penetrating, None))
+    // }
+
+    // #[test]
+    // fn test_modifier_penetrating_standard_less_than() {
+    //     let res = parse_modifier.parse("!p<54").unwrap();
+    //     let expected = Modifier::Exploding(
+    //         ExplodingKind::Penetrating,
+    //         Some(ComparePoint::LessThan(54.0)),
+    //     );
+    //     assert_eq!(res, expected)
+    // }
+
+    // #[test]
+    // fn test_modifier_compounding_standard() {
+    //     let res = parse_modifier.parse("!!").unwrap();
+    //     assert_eq!(res, Modifier::Exploding(ExplodingKind::Compounding, None))
+    // }
+
+    // #[test]
+    // fn test_modifier_compounding_standard_greater_than() {
+    //     let res = parse_modifier.parse("!!>67").unwrap();
+    //     let expected = Modifier::Exploding(
+    //         ExplodingKind::Compounding,
+    //         Some(ComparePoint::GreaterThan(67.0)),
+    //     );
+    //     assert_eq!(res, expected)
+    // }
+
+    // #[test]
+    // fn test_modifier_penetrating_compounding_standard() {
+    //     let res = parse_modifier.parse("!!p").unwrap();
+    //     assert_eq!(
+    //         res,
+    //         Modifier::Exploding(ExplodingKind::PenetratingCompounding, None)
+    //     )
+    // }
+
+    // #[test]
+    // fn test_modifier_penetrating_compounding_standard_greater_or_equal() {
+    //     let res = parse_modifier.parse("!!p>=7").unwrap();
+    //     let expected = Modifier::Exploding(
+    //         ExplodingKind::PenetratingCompounding,
+    //         Some(ComparePoint::GreaterThanOrEqual(7.0)),
+    //     );
+    //     assert_eq!(res, expected)
+    // }
+
+    // #[test]
+    // fn test_modifier_reroll() {
+    //     let res = parse_modifier.parse("r").unwrap();
+    //     assert_eq!(res, Modifier::ReRoll(false, None))
+    // }
+
+    // #[test]
+    // fn test_modifier_reroll_equals() {
+    //     let res = parse_modifier.parse("r=6").unwrap();
+    //     assert_eq!(res, Modifier::ReRoll(false, Some(ComparePoint::Equal(6.0))))
+    // }
+
+    // #[test]
+    // fn test_modifier_reroll_once() {
+    //     let res = parse_modifier.parse("ro").unwrap();
+    //     assert_eq!(res, Modifier::ReRoll(true, None))
+    // }
+
+    // #[test]
+    // fn test_modifier_reroll_once_less_than() {
+    //     let res = parse_modifier.parse("ro<3").unwrap();
+    //     assert_eq!(
+    //         res,
+    //         Modifier::ReRoll(true, Some(ComparePoint::LessThan(3.0)))
+    //     )
+    // }
+
+    // #[test]
+    // fn test_modifier_unique() {
+    //     let res = parse_modifier.parse("u").unwrap();
+    //     assert_eq!(res, Modifier::Unique(false, None))
+    // }
+
+    // #[test]
+    // fn test_modifier_unique_equals() {
+    //     let res = parse_modifier.parse("u=5").unwrap();
+    //     assert_eq!(res, Modifier::Unique(false, Some(ComparePoint::Equal(5.0))))
+    // }
+
+    // #[test]
+    // fn test_modifier_unique_once() {
+    //     let res = parse_modifier.parse("uo").unwrap();
+    //     assert_eq!(res, Modifier::Unique(true, None))
+    // }
+
+    // #[test]
+    // fn test_modifier_unique_once_greater() {
+    //     let res = parse_modifier.parse("uo>6").unwrap();
+    //     let expected = Modifier::Unique(true, Some(ComparePoint::GreaterThan(6.0)));
+    //     assert_eq!(res, expected)
+    // }
+
+    // #[test]
+    // fn test_modifier_keep_default() {
+    //     let res = parse_modifier.parse("k2").unwrap();
+    //     assert_eq!(res, Modifier::Keep(KeepKind::Highest, 2))
+    // }
+
+    // #[test]
+    // fn test_modifier_keep_default_missing_amount() {
+    //     assert!(parse_modifier.parse("k").is_err())
+    // }
+
+    // #[test]
+    // fn test_modifier_keep_highest() {
+    //     let res = parse_modifier.parse("kh3").unwrap();
+    //     assert_eq!(res, Modifier::Keep(KeepKind::Highest, 3))
+    // }
+
+    // #[test]
+    // fn test_modifier_keep_highest_missing_amount() {
+    //     assert!(parse_modifier.parse("kh").is_err())
+    // }
+
+    // #[test]
+    // fn test_modifier_keep_lowest() {
+    //     let res = parse_modifier.parse("kl4").unwrap();
+    //     assert_eq!(res, Modifier::Keep(KeepKind::Lowest, 4))
+    // }
+
+    // #[test]
+    // fn test_modifier_keep_lowest_missing_amount() {
+    //     assert!(parse_modifier.parse("kl").is_err())
+    // }
+
+    // #[test]
+    // fn test_modifier_drop_default() {
+    //     let res = parse_modifier.parse("d2").unwrap();
+    //     assert_eq!(res, Modifier::Drop(KeepKind::Lowest, 2))
+    // }
+
+    // #[test]
+    // fn test_modifier_drop_default_missing_amount() {
+    //     assert!(parse_modifier.parse("d").is_err())
+    // }
+
+    // #[test]
+    // fn test_modifier_drop_highest() {
+    //     let res = parse_modifier.parse("dh3").unwrap();
+    //     assert_eq!(res, Modifier::Drop(KeepKind::Highest, 3))
+    // }
+
+    // #[test]
+    // fn test_modifier_drop_highest_missing_amount() {
+    //     assert!(parse_modifier.parse("dh").is_err())
+    // }
+
+    // #[test]
+    // fn test_modifier_drop_lowest() {
+    //     let res = parse_modifier.parse("dl4").unwrap();
+    //     assert_eq!(res, Modifier::Drop(KeepKind::Lowest, 4))
+    // }
+
+    // #[test]
+    // fn test_modifier_drop_lowest_missing_amount() {
+    //     assert!(parse_modifier.parse("dl").is_err())
+    // }
+
+    // #[test]
+    // fn test_modifier_critical_success() {
+    //     let res = parse_modifier.parse("cs").unwrap();
+    //     assert_eq!(res, Modifier::CriticalSuccess(None))
+    // }
+
+    // #[test]
+    // fn test_modifier_critical_success_less_than_or_equal() {
+    //     let res = parse_modifier.parse("cs<=5").unwrap();
+    //     let expected = Modifier::CriticalSuccess(Some(ComparePoint::LessThanOrEqual(5.0)));
+    //     assert_eq!(res, expected)
+    // }
+
+    // #[test]
+    // fn test_modifier_critical_failure() {
+    //     let res = parse_modifier.parse("cf").unwrap();
+    //     assert_eq!(res, Modifier::CriticalFailure(None))
+    // }
+
+    // #[test]
+    // fn test_modifier_critical_failure_greater_than_or_equal() {
+    //     let res = parse_modifier.parse("cf>=1").unwrap();
+    //     let expected = Modifier::CriticalFailure(Some(ComparePoint::GreaterThanOrEqual(1.0)));
+    //     assert_eq!(res, expected)
+    // }
+
+    // #[test]
+    // fn test_modifier_sort_default() {
+    //     let res = parse_modifier.parse("s").unwrap();
+    //     assert_eq!(res, Modifier::Sort(SortKind::Ascending))
+    // }
+
+    // #[test]
+    // fn test_modifier_sort_ascending() {
+    //     let res = parse_modifier.parse("sa").unwrap();
+    //     assert_eq!(res, Modifier::Sort(SortKind::Ascending))
+    // }
+
+    // #[test]
+    // fn test_modifier_sort_descending() {
+    //     let res = parse_modifier.parse("sd").unwrap();
+    //     assert_eq!(res, Modifier::Sort(SortKind::Descending))
+    // }
+
+    // /**
+    //  * Parsing compare points alone
+    //  */
+
+    // #[test]
+    // fn test_compare_point_equals() {
+    //     let res = compare_point.parse("=3").unwrap();
+    //     assert_eq!(res, ComparePoint::Equal(3.0))
+    // }
+
+    // #[test]
+    // fn test_compare_point_not_equals() {
+    //     let res = compare_point.parse("<>69").unwrap();
+    //     assert_eq!(res, ComparePoint::NotEqual(69.0))
+    // }
+
+    // #[test]
+    // fn test_compare_point_less_than() {
+    //     let res = compare_point.parse("<123").unwrap();
+    //     assert_eq!(res, ComparePoint::LessThan(123.0))
+    // }
+
+    // #[test]
+    // fn test_compare_point_greater_than() {
+    //     let res = compare_point.parse(">123").unwrap();
+    //     assert_eq!(res, ComparePoint::GreaterThan(123.0))
+    // }
+
+    // #[test]
+    // fn test_compare_point_less_than_or_equal() {
+    //     let res = compare_point.parse("<=123").unwrap();
+    //     assert_eq!(res, ComparePoint::LessThanOrEqual(123.0))
+    // }
+
+    // #[test]
+    // fn test_compare_point_greater_than_or_equal() {
+    //     let res = compare_point.parse(">=456").unwrap();
+    //     assert_eq!(res, ComparePoint::GreaterThanOrEqual(456.0))
+    // }
 }
