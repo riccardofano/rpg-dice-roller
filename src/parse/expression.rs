@@ -12,13 +12,6 @@ use super::{
     parse_group_modifier, BumpExpression, Expression, MathFn1, MathFn2, Modifier, Operator, Stream,
 };
 
-impl<'bp> Expression<'bp> {
-    pub fn parse(input: &str) -> Result<Self, String> {
-        todo!();
-        // parse_expr.parse(input).map_err(|e| e.to_string())
-    }
-}
-
 pub fn parse_expr<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<BumpExpression<'bp>> {
     let init = parse_term.parse_next(stream)?;
 
@@ -166,131 +159,148 @@ pub fn parse_fn2<'bp>(stream: &mut Stream<'_, 'bp>) -> PResult<BumpExpression<'b
 
 #[cfg(test)]
 mod tests {
-    // use super::*;
+    use bumpalo::Bump;
 
-    // fn val(float: f64) -> Box<Expression> {
-    //     Box::new(Expression::Value(float))
-    // }
-    // fn parens(expr: Box<Expression>) -> Box<Expression> {
-    //     Box::new(Expression::Parens(expr))
-    // }
-    // fn infix(op: Operator, lhs: Box<Expression>, rhs: Box<Expression>) -> Box<Expression> {
-    //     Box::new(Expression::Infix(op, lhs, rhs))
-    // }
+    use crate::NotationParser;
 
-    // #[test]
-    // fn test_expression() {
-    //     let input = "10d6 + 5d3s";
-    //     let expression = Expression::parse(input).unwrap();
+    use super::*;
 
-    //     assert_eq!(expression.to_string(), input);
-    // }
+    fn val(float: f64) -> &'static Expression<'static> {
+        Box::leak(Box::new(Expression::Value(float)))
+    }
+    fn parens(expr: &'static Expression<'static>) -> &'static Expression<'static> {
+        Box::leak(Box::new(Expression::Parens(expr)))
+    }
+    fn infix(
+        op: Operator,
+        lhs: &'static Expression<'static>,
+        rhs: &'static Expression<'static>,
+    ) -> &'static Expression<'static> {
+        Box::leak(Box::new(Expression::Infix(op, lhs, rhs)))
+    }
 
-    // #[test]
-    // fn test_infix_expressions() {
-    //     #[rustfmt::skip]
-    //     let inputs = [
-    //         ( "1 + 2", Expression::Infix(Operator::Add, Box::new(Expression::Value(1.0)), Box::new(Expression::Value(2.0))) ),
-    //         ("3 - 4", Expression::Infix(Operator::Sub, Box::new(Expression::Value(3.0)), Box::new(Expression::Value(4.0)))),
-    //         ("4 * 5", Expression::Infix(Operator::Mul, Box::new(Expression::Value(4.0)), Box::new(Expression::Value(5.0)))),
-    //         ("5 / 6", Expression::Infix(Operator::Div, Box::new(Expression::Value(5.0)), Box::new(Expression::Value(6.0)))),
-    //         ("6 % 7", Expression::Infix(Operator::Rem, Box::new(Expression::Value(6.0)), Box::new(Expression::Value(7.0)))),
-    //         ("7 ** 8", Expression::Infix(Operator::Pow, Box::new(Expression::Value(7.0)), Box::new(Expression::Value(8.0)))),
-    //     ];
+    #[test]
+    fn test_expression() {
+        let input = "10d6 + 5d3s";
+        let mut parser = NotationParser::new();
+        let expression = parser.parse(input).unwrap();
 
-    //     for (input, expected) in inputs {
-    //         let expression = Expression::parse(input).unwrap();
-    //         assert_eq!(expression, expected);
-    //         assert_eq!(expression.to_string(), input);
-    //     }
-    // }
+        assert_eq!(expression.to_string(), input);
+    }
 
-    // #[test]
-    // fn test_infix_pow_variant_expression() {
-    //     #[rustfmt::skip]
-    //     let input = "2 ^ 6";
+    #[test]
+    fn test_infix_expressions() {
+        let bump = Bump::new();
 
-    //     let expression = Expression::parse(input).unwrap();
-    //     assert_eq!(expression.to_string(), "2 ** 6");
-    //     assert_eq!(
-    //         expression,
-    //         Expression::Infix(
-    //             Operator::Pow,
-    //             Box::new(Expression::Value(2.0)),
-    //             Box::new(Expression::Value(6.0))
-    //         )
-    //     )
-    // }
+        #[rustfmt::skip]
+        let inputs = [
+            ( "1 + 2", Expression::Infix(Operator::Add, val(1.0), val(2.0))),
+            ("3 - 4", Expression::Infix(Operator::Sub, val(3.0), val(4.0))),
+            ("4 * 5", Expression::Infix(Operator::Mul, val(4.0), val(5.0))),
+            ("5 / 6", Expression::Infix(Operator::Div, val(5.0), val(6.0))),
+            ("6 % 7", Expression::Infix(Operator::Rem, val(6.0), val(7.0))),
+            ("7 ** 8", Expression::Infix(Operator::Pow, val(7.0), val(8.0))),
+        ];
 
-    // #[test]
-    // fn test_parens_expressions() {
-    //     #[rustfmt::skip]
-    //     let inputs = [
-    //         ( "(1)", *parens(val(1.0))),
-    //         ( "(1 + 1)", *parens(infix(Operator::Add, val(1.0), val(1.0)))),
-    //     ];
+        for (input, expected) in inputs {
+            let mut parser = NotationParser::new();
+            let expression = parser.parse(input).unwrap();
+            assert_eq!(expression, expected);
+            assert_eq!(expression.to_string(), input);
+        }
+    }
 
-    //     for (input, expected) in inputs {
-    //         let expression = Expression::parse(input).unwrap();
-    //         assert_eq!(expression, expected);
-    //         assert_eq!(expression.to_string(), input);
-    //     }
-    // }
+    #[test]
+    fn test_infix_pow_variant_expression() {
+        #[rustfmt::skip]
+        let input = "2 ^ 6";
 
-    // #[test]
-    // fn test_fn1_expressions() {
-    //     #[rustfmt::skip]
-    //     let inputs = [
-    //         ( "abs(1)", Expression::Fn1(MathFn1::Abs, parens(val(1.0)))),
-    //         ( "floor(1 / 5)", Expression::Fn1(MathFn1::Floor, parens(infix(Operator::Div, val(1.0), val(5.0))))),
-    //         ( "ceil(2)", Expression::Fn1(MathFn1::Ceil, parens(val(2.0)))),
-    //         ( "round(2)", Expression::Fn1(MathFn1::Round, parens(val(2.0)))),
-    //         ( "sign(2)", Expression::Fn1(MathFn1::Sign, parens(val(2.0)))),
-    //         ( "sqrt(2)", Expression::Fn1(MathFn1::Sqrt, parens(val(2.0)))),
-    //         ( "log(2)", Expression::Fn1(MathFn1::Log, parens(val(2.0)))),
-    //         ( "exp(2)", Expression::Fn1(MathFn1::Exp, parens(val(2.0)))),
-    //         ( "sin(2)", Expression::Fn1(MathFn1::Sin, parens(val(2.0)))),
-    //         ( "cos(2)", Expression::Fn1(MathFn1::Cos, parens(val(2.0)))),
-    //         ( "tan(2)", Expression::Fn1(MathFn1::Tan, parens(val(2.0)))),
-    //     ];
+        let mut parser = NotationParser::new();
+        let expression = parser.parse(input).unwrap();
+        assert_eq!(expression.to_string(), "2 ** 6");
+        assert_eq!(
+            expression,
+            Expression::Infix(
+                Operator::Pow,
+                &Expression::Value(2.0),
+                &Expression::Value(6.0)
+            )
+        )
+    }
 
-    //     for (input, expected) in inputs {
-    //         let expression = Expression::parse(input).unwrap();
-    //         assert_eq!(expression, expected);
-    //         assert_eq!(expression.to_string(), input);
-    //     }
-    // }
+    #[test]
+    fn test_parens_expressions() {
+        #[rustfmt::skip]
+        let inputs = [
+            ( "(1)", parens(val(1.0)).clone()),
+            ( "(1 + 1)", parens(infix(Operator::Add, val(1.0), val(1.0))).clone()),
+        ];
 
-    // #[test]
-    // fn test_fn2_expressions() {
-    //     #[rustfmt::skip]
-    //     let inputs = [
-    //         ( "min(1, 5)", Expression::Fn2(MathFn2::Min, val(1.0), val(5.0))),
-    //         ( "max(54, 60483)", Expression::Fn2(MathFn2::Max, val(54.0), val(60483.0))),
-    //         ( "pow(48, 3)", Expression::Fn2(MathFn2::Pow, val(48.0), val(3.0))),
-    //     ];
+        for (input, expected) in inputs {
+            let mut parser = NotationParser::new();
+            let expression = parser.parse(input).unwrap();
+            assert_eq!(expression, expected);
+            assert_eq!(expression.to_string(), input);
+        }
+    }
 
-    //     for (input, expected) in inputs {
-    //         let expression = Expression::parse(input).unwrap();
-    //         assert_eq!(expression, expected);
-    //         assert_eq!(expression.to_string(), input);
-    //     }
-    // }
+    #[test]
+    fn test_fn1_expressions() {
+        #[rustfmt::skip]
+        let inputs = [
+            ( "abs(1)", Expression::Fn1(MathFn1::Abs, parens(val(1.0)))),
+            ( "floor(1 / 5)", Expression::Fn1(MathFn1::Floor, parens(infix(Operator::Div, val(1.0), val(5.0))))),
+            ( "ceil(2)", Expression::Fn1(MathFn1::Ceil, parens(val(2.0)))),
+            ( "round(2)", Expression::Fn1(MathFn1::Round, parens(val(2.0)))),
+            ( "sign(2)", Expression::Fn1(MathFn1::Sign, parens(val(2.0)))),
+            ( "sqrt(2)", Expression::Fn1(MathFn1::Sqrt, parens(val(2.0)))),
+            ( "log(2)", Expression::Fn1(MathFn1::Log, parens(val(2.0)))),
+            ( "exp(2)", Expression::Fn1(MathFn1::Exp, parens(val(2.0)))),
+            ( "sin(2)", Expression::Fn1(MathFn1::Sin, parens(val(2.0)))),
+            ( "cos(2)", Expression::Fn1(MathFn1::Cos, parens(val(2.0)))),
+            ( "tan(2)", Expression::Fn1(MathFn1::Tan, parens(val(2.0)))),
+        ];
 
-    // #[test]
-    // fn test_group_expressions() {
-    //     #[rustfmt::skip]
-    //     let inputs = [
-    //         ( "{1, 5}", Expression::Group(vec![*val(1.0), *val(5.0)], vec![])),
-    //         ( "{1 % 3, 5}", Expression::Group(vec![*infix(Operator::Rem, val(1.0), val(3.0)), *val(5.0)], vec![])),
-    //         ( "{1, 5}dl1", Expression::Group(vec![*val(1.0), *val(5.0)], vec![Modifier::Drop(crate::KeepKind::Lowest, 1)])),
-    //         ( "{1, 5}kh3dl1", Expression::Group(vec![*val(1.0), *val(5.0)], vec![Modifier::Keep(crate::KeepKind::Highest, 3), Modifier::Drop(crate::KeepKind::Lowest, 1)])),
-    //     ];
+        for (input, expected) in inputs {
+            let mut parser = NotationParser::new();
+            let expression = parser.parse(input).unwrap();
+            assert_eq!(expression, expected);
+            assert_eq!(expression.to_string(), input);
+        }
+    }
 
-    //     for (input, expected) in inputs {
-    //         let expression = Expression::parse(input).unwrap();
-    //         assert_eq!(expression, expected);
-    //         assert_eq!(expression.to_string(), input);
-    //     }
-    // }
+    #[test]
+    fn test_fn2_expressions() {
+        #[rustfmt::skip]
+        let inputs = [
+            ( "min(1, 5)", Expression::Fn2(MathFn2::Min, val(1.0), val(5.0))),
+            ( "max(54, 60483)", Expression::Fn2(MathFn2::Max, val(54.0), val(60483.0))),
+            ( "pow(48, 3)", Expression::Fn2(MathFn2::Pow, val(48.0), val(3.0))),
+        ];
+
+        for (input, expected) in inputs {
+            let mut parser = NotationParser::new();
+            let expression = parser.parse(input).unwrap();
+            assert_eq!(expression, expected);
+            assert_eq!(expression.to_string(), input);
+        }
+    }
+
+    #[test]
+    fn test_group_expressions() {
+        #[rustfmt::skip]
+        let inputs = [
+            ( "{1, 5}", Expression::Group(vec![val(1.0).clone(), val(5.0).clone()], vec![])),
+            ( "{1 % 3, 5}", Expression::Group(vec![infix(Operator::Rem, val(1.0), val(3.0)).clone(), val(5.0).clone()], vec![])),
+            ( "{1, 5}dl1", Expression::Group(vec![val(1.0).clone(), val(5.0).clone()], vec![Modifier::Drop(crate::KeepKind::Lowest, 1)])),
+            ( "{1, 5}kh3dl1", Expression::Group(vec![val(1.0).clone(), val(5.0).clone()], vec![Modifier::Keep(crate::KeepKind::Highest, 3), Modifier::Drop(crate::KeepKind::Lowest, 1)])),
+        ];
+
+        for (input, expected) in inputs {
+            let mut parser = NotationParser::new();
+            let expression = parser.parse(input).unwrap();
+            assert_eq!(expression, expected);
+            assert_eq!(expression.to_string(), input);
+        }
+    }
 }

@@ -34,9 +34,8 @@ impl<'bp> Expression<'bp> {
             }
             Expression::Parens(expr) => expr.roll(rng),
             Expression::Group(expressions, modifiers) => {
-                let rolled_expressions =
-                    expressions.into_iter().map(|expr| expr.roll(rng)).collect();
-                let output = apply_group_modifiers(rolled_expressions, &modifiers);
+                let rolled_expressions = expressions.iter().map(|expr| expr.roll(rng)).collect();
+                let output = apply_group_modifiers(rolled_expressions, modifiers);
                 RolledExpression::Group(output)
             }
             Expression::Infix(op, lhs, rhs) => {
@@ -134,7 +133,7 @@ impl MathFn2 {
     }
 }
 
-impl std::fmt::Display for &Expression<'_> {
+impl std::fmt::Display for Expression<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Expression::Value(val) => write!(f, "{val}"),
