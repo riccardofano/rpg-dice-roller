@@ -17,7 +17,7 @@ pub fn benchmark_parsing(c: &mut Criterion) {
 pub fn benchmark_rolling(c: &mut Criterion) {
     c.bench_function("roll cursed dice", |b| {
         b.iter(|| {
-            let dice = Dice::new(999, DiceKind::Standard(444), Vec::new());
+            let dice = Dice::new(999, DiceKind::Standard(444), &Vec::new());
             let mut rng = StdRng::seed_from_u64(1);
             dice.roll_all(&mut rng);
         });

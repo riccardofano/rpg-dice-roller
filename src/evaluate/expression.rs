@@ -84,7 +84,7 @@ fn dice_from_expression(
         None => 1,
     };
 
-    Dice::new(quantity, kind, modifiers)
+    Dice::new(quantity, kind, &modifiers)
 }
 
 impl Operator {

@@ -9,6 +9,8 @@ use super::{
     KeepKind, Modifier, SortKind,
 };
 
+const TOTAL_MODIFIERS: usize = 12;
+
 impl Modifier {
     pub fn discriminant(&self) -> u8 {
         // SAFETY: Because `Self` is marked `repr(u8)`, its layout is a `repr(C)` `union`
@@ -25,6 +27,21 @@ impl Modifier {
             .collect::<Vec<_>>()
             .join("")
     }
+
+    pub(crate) fn filter(modifiers: &[Modifier]) -> Vec<Modifier> {
+        assert!(modifiers.len() < usize::MAX, "cmon, really?");
+
+        let mut modifier_indices = [0; TOTAL_MODIFIERS];
+        for (i, modifier) in modifiers.iter().enumerate() {
+            modifier_indices[modifier.discriminant() as usize] = i + 1;
+        }
+
+        modifier_indices
+            .into_iter()
+            .filter(|&i| i > 0)
+            .map(|i| modifiers[i - 1])
+            .collect()
+    }
 }
 impl PartialOrd for Modifier {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -33,14 +50,15 @@ impl PartialOrd for Modifier {
 }
 
 impl Dice {
-    pub fn new(quantity: u32, kind: DiceKind, mut modifiers: Vec<Modifier>) -> Self {
-        // TODO: maybe only sort them when you apply them?
-        modifiers.sort_by_key(|m| m.discriminant());
-
+    /// Creates a new dice.
+    /// The quantity will be set to 1 if 0 was passed in.
+    /// The modifiers will be sorted in the order specified by the enum and only
+    /// the last one of each variant will be applied.
+    pub fn new(quantity: u32, kind: DiceKind, modifiers: &[Modifier]) -> Self {
         Self {
             quantity,
             kind,
-            modifiers,
+            modifiers: Modifier::filter(modifiers),
         }
     }
 }
