@@ -11,6 +11,49 @@ struct RollsInfo {
 }
 
 impl Dice {
+    /// Creates a new dice.
+    /// The quantity will clamped between 1 and 999 if a number outside that range is passed in.
+    /// The modifiers will be sorted in the order specified by the enum and only
+    /// the last one of each variant will be applied.
+    pub fn new(quantity: u32, kind: DiceKind, modifiers: &[Modifier]) -> Self {
+        let quantity = quantity.clamp(1, 999);
+        Self {
+            quantity,
+            kind,
+            modifiers: Modifier::filter(modifiers),
+        }
+    }
+
+    pub fn quantity(&self) -> u32 {
+        self.quantity
+    }
+    pub fn modifiers(&self) -> &[Modifier] {
+        &self.modifiers
+    }
+    pub fn sides(&self) -> u32 {
+        match self.kind {
+            DiceKind::Standard(sides) => sides,
+            DiceKind::Fudge1 | DiceKind::Fudge2 => 6,
+        }
+    }
+    pub fn kind(&self) -> DiceKind {
+        self.kind
+    }
+    pub fn max_value(&self) -> i32 {
+        match self.kind {
+            DiceKind::Standard(sides) => sides as i32,
+            DiceKind::Fudge1 => 1,
+            DiceKind::Fudge2 => 1,
+        }
+    }
+    pub fn min_value(&self) -> i32 {
+        match self.kind {
+            DiceKind::Standard(_) => 1,
+            DiceKind::Fudge1 => -1,
+            DiceKind::Fudge2 => -1,
+        }
+    }
+
     fn roll_amount(&self, amount: usize, rng: &mut impl Rng) -> RollOutput {
         let mut rolls_info = RollsInfo {
             all: Vec::with_capacity(amount),
@@ -61,22 +104,6 @@ impl Dice {
             DiceKind::Standard(sides) => (random_value * sides as f32).ceil() as i32,
             DiceKind::Fudge1 => [-1, 0, 0, 0, 0, 1][(random_value * 6_f32).floor() as usize],
             DiceKind::Fudge2 => (random_value * 3_f32).floor() as i32 - 1,
-        }
-    }
-
-    fn max_value(&self) -> i32 {
-        match self.kind {
-            DiceKind::Standard(sides) => sides as i32,
-            DiceKind::Fudge1 => 1,
-            DiceKind::Fudge2 => 1,
-        }
-    }
-
-    fn min_value(&self) -> i32 {
-        match self.kind {
-            DiceKind::Standard(_) => 1,
-            DiceKind::Fudge1 => -1,
-            DiceKind::Fudge2 => -1,
         }
     }
 }

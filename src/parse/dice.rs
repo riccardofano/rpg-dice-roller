@@ -5,8 +5,8 @@ use winnow::{
 };
 
 use super::{
-    parse_fn1, parse_fn2, parse_parens, ComparePoint, Dice, DiceKind, ExplodingKind, Expression,
-    KeepKind, Modifier, SortKind,
+    parse_fn1, parse_fn2, parse_parens, ComparePoint, ExplodingKind, Expression, KeepKind,
+    Modifier, SortKind,
 };
 
 impl Modifier {
@@ -65,21 +65,6 @@ impl Modifier {
 impl PartialOrd for Modifier {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.discriminant().cmp(&other.discriminant()))
-    }
-}
-
-impl Dice {
-    /// Creates a new dice.
-    /// The quantity will clamped between 1 and 999 if a number outside that range is passed in.
-    /// The modifiers will be sorted in the order specified by the enum and only
-    /// the last one of each variant will be applied.
-    pub fn new(quantity: u32, kind: DiceKind, modifiers: &[Modifier]) -> Self {
-        let quantity = quantity.clamp(1, 999);
-        Self {
-            quantity,
-            kind,
-            modifiers: Modifier::filter(modifiers),
-        }
     }
 }
 
