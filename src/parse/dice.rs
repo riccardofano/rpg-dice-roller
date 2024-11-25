@@ -4,69 +4,18 @@ use winnow::{
     PResult, Parser,
 };
 
-use super::{parse_fn1, parse_fn2, parse_parens, Expression};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DiceKind {
-    /// Standard dice with number of sides
-    Standard(u32),
-    /// Fudge/Fate die with 4 blanks, 1 plus, 1 minus
-    Fudge1,
-    /// Fudge/Fate die with 2 blanks, 2 plus, 2 minus
-    Fudge2,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ComparePoint {
-    Equal(f64),
-    NotEqual(f64),
-    LessThan(f64),
-    GreaterThan(f64),
-    LessThanOrEqual(f64),
-    GreaterThanOrEqual(f64),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExplodingKind {
-    Standard,
-    Penetrating,
-    Compounding,
-    PenetratingCompounding,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SortKind {
-    Ascending,
-    Descending,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeepKind {
-    Highest,
-    Lowest,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[repr(u8)]
-pub enum Modifier {
-    Min(i32),
-    Max(i32),
-    Exploding(ExplodingKind, Option<ComparePoint>),
-    /// True means to only re-roll once
-    ReRoll(bool, Option<ComparePoint>),
-    /// True means to only re-roll a unique dice once
-    Unique(bool, Option<ComparePoint>),
-    TargetSuccess(ComparePoint),
-    /// Target failure must always be preceeded by a target success
-    TargetFailure(ComparePoint, ComparePoint),
-    CriticalSuccess(Option<ComparePoint>),
-    CriticalFailure(Option<ComparePoint>),
-    Keep(KeepKind, u32),
-    Drop(KeepKind, u32),
-    Sort(SortKind),
-}
+use super::{
+    parse_fn1, parse_fn2, parse_parens, ComparePoint, ExplodingKind, Expression, KeepKind,
+    Modifier, SortKind,
+};
 
 impl Modifier {
+    const AMOUNT: usize = 12;
+    // Everything after Modifier::Unique should be done after the rolls because
+    // they don't add new rolls, they only look at the ones that were already
+    // rolled and add modifiers
+    const LAST_ROLL_MODIFIER: u8 = 4;
+
     pub fn discriminant(&self) -> u8 {
         // SAFETY: Because `Self` is marked `repr(u8)`, its layout is a `repr(C)` `union`
         // between `repr(C)` structs, each of which has the `u8` discriminant as its first
@@ -82,30 +31,40 @@ impl Modifier {
             .collect::<Vec<_>>()
             .join("")
     }
+
+    pub(crate) fn filter(modifiers: &[Modifier]) -> Vec<Modifier> {
+        assert!(modifiers.len() < usize::MAX, "cmon, really?");
+
+        let mut modifier_indices = [0; Modifier::AMOUNT];
+        for (i, modifier) in modifiers.iter().enumerate() {
+            modifier_indices[modifier.discriminant() as usize] = i + 1;
+        }
+
+        modifier_indices
+            .into_iter()
+            .filter(|&i| i > 0)
+            .map(|i| modifiers[i - 1])
+            .collect()
+    }
+
+    pub(crate) fn split_roll_and_output_modifiers(
+        modifiers: &[Modifier],
+    ) -> (&[Modifier], &[Modifier]) {
+        if modifiers.is_empty() {
+            return (&[], &[]);
+        }
+
+        let first_post_roll_modifier = modifiers
+            .iter()
+            .position(|m| m.discriminant() >= Modifier::LAST_ROLL_MODIFIER)
+            .unwrap_or(modifiers.len());
+
+        modifiers.split_at(first_post_roll_modifier)
+    }
 }
 impl PartialOrd for Modifier {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.discriminant().cmp(&other.discriminant()))
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Dice {
-    pub(crate) quantity: u32,
-    pub(crate) kind: DiceKind,
-    pub(crate) modifiers: Vec<Modifier>,
-}
-
-impl Dice {
-    pub fn new(quantity: u32, kind: DiceKind, mut modifiers: Vec<Modifier>) -> Self {
-        // TODO: maybe only sort them when you apply them?
-        modifiers.sort_by_key(|m| m.discriminant());
-
-        Self {
-            quantity,
-            kind,
-            modifiers,
-        }
     }
 }
 
@@ -335,7 +294,7 @@ mod tests {
 
     use crate::{
         parse::{ComparePoint, Modifier},
-        Expression,
+        Dice, DiceKind, Expression,
     };
 
     use super::{compare_point, parse_modifier, ExplodingKind, KeepKind, SortKind};
@@ -734,5 +693,17 @@ mod tests {
     fn test_compare_point_greater_than_or_equal() {
         let res = compare_point.parse(">=456").unwrap();
         assert_eq!(res, ComparePoint::GreaterThanOrEqual(456.0))
+    }
+
+    #[test]
+    fn test_zero_quantity_is_one() {
+        let dice = Dice::new(0, DiceKind::Standard(20), &[]);
+        assert_eq!(dice.quantity, 1);
+    }
+
+    #[test]
+    fn test_nine_nine_nine_quantity_if_over() {
+        let dice = Dice::new(932052380, DiceKind::Standard(20), &[]);
+        assert_eq!(dice.quantity, 999);
     }
 }
