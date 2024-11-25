@@ -238,3 +238,112 @@ impl std::fmt::Display for GroupRollOutput {
         write!(f, "{group}")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::RollOutputKind::*;
+    use super::*;
+
+    fn new_output(rolls: Vec<Roll>, kind: RollOutputKind, modifier_flags: u32) -> RollOutput {
+        RollOutput {
+            rolls,
+            kind,
+            modifier_flags,
+        }
+    }
+
+    #[test]
+    fn test_output_sum() {
+        let output = new_output(vec![Roll::new(1), Roll::new(4)], Sum, 0);
+        assert_eq!(output.sum(), 5.0);
+        assert_eq!(output.value(), 5.0);
+    }
+
+    #[test]
+    fn test_output_sum_regardless_of_kind() {
+        let output = new_output(vec![Roll::new(1), Roll::new(4)], Sum, 0);
+        assert_eq!(output.sum(), 5.0);
+    }
+
+    #[test]
+    fn test_output_sum_ignores_dropped() {
+        let mut dropped_roll = Roll::new(6);
+        dropped_roll.set_modifier_flag(ModifierFlags::Drop as u8);
+
+        let output = new_output(vec![Roll::new(1), dropped_roll, Roll::new(4)], Sum, 0);
+        assert_eq!(output.sum(), 5.0);
+        assert_eq!(output.value(), 5.0);
+    }
+
+    #[test]
+    fn test_output_target_failure() {
+        let mut failed = Roll::new(58);
+        failed.set_modifier_flag(ModifierFlags::TargetFailure as u8);
+
+        let output = new_output(vec![Roll::new(1), failed, Roll::new(4)], TargetFailure, 0);
+        assert_eq!(output.target_failure(), -1.0);
+        assert_eq!(output.value(), -1.0);
+    }
+
+    #[test]
+    fn test_output_target_failure_sums_success_rolls() {
+        let mut failed = Roll::new(58);
+        failed.set_modifier_flag(ModifierFlags::TargetFailure as u8);
+        let mut successful = Roll::new(382);
+        successful.set_modifier_flag(ModifierFlags::TargetSuccess as u8);
+
+        let output = new_output(
+            vec![Roll::new(1), failed, successful, Roll::new(4)],
+            TargetFailure,
+            0,
+        );
+        assert_eq!(output.target_failure(), 0.0);
+        assert_eq!(output.value(), 0.0);
+    }
+
+    #[test]
+    fn test_output_target_failure_ignores_dropped() {
+        let mut failed = Roll::new(58);
+        failed.set_modifier_flag(ModifierFlags::TargetFailure as u8);
+        failed.set_modifier_flag(ModifierFlags::Drop as u8);
+
+        let output = new_output(vec![Roll::new(1), failed, Roll::new(4)], TargetFailure, 0);
+        assert_eq!(output.target_failure(), 0.0);
+        assert_eq!(output.value(), 0.0);
+    }
+
+    #[test]
+    fn test_output_target_success() {
+        let mut successful = Roll::new(58);
+        successful.set_modifier_flag(ModifierFlags::TargetSuccess as u8);
+
+        let output = new_output(
+            vec![Roll::new(1), successful, Roll::new(4)],
+            TargetSuccess,
+            0,
+        );
+        assert_eq!(output.target_failure(), 1.0);
+        assert_eq!(output.value(), 1.0);
+    }
+
+    #[test]
+    fn test_output_target_success_ignores_failed_rolls() {
+        let mut failed = Roll::new(58);
+        failed.set_modifier_flag(ModifierFlags::TargetFailure as u8);
+        let mut successful = Roll::new(382);
+        successful.set_modifier_flag(ModifierFlags::TargetSuccess as u8);
+
+        let output = new_output(vec![Roll::new(1), failed, successful, Roll::new(4)], Sum, 0);
+        assert_eq!(output.target_success(), 1.0);
+    }
+
+    #[test]
+    fn test_output_target_success_ignores_dropped() {
+        let mut failed = Roll::new(58);
+        failed.set_modifier_flag(ModifierFlags::TargetFailure as u8);
+        failed.set_modifier_flag(ModifierFlags::Drop as u8);
+
+        let output = new_output(vec![Roll::new(1), failed, Roll::new(4)], Sum, 0);
+        assert_eq!(output.target_failure(), 0.0);
+    }
+}
