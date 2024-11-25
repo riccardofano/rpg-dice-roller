@@ -70,10 +70,11 @@ impl PartialOrd for Modifier {
 
 impl Dice {
     /// Creates a new dice.
-    /// The quantity will be set to 1 if 0 was passed in.
+    /// The quantity will clamped between 1 and 999 if a number outside that range is passed in.
     /// The modifiers will be sorted in the order specified by the enum and only
     /// the last one of each variant will be applied.
     pub fn new(quantity: u32, kind: DiceKind, modifiers: &[Modifier]) -> Self {
+        let quantity = quantity.clamp(1, 999);
         Self {
             quantity,
             kind,
@@ -308,7 +309,7 @@ mod tests {
 
     use crate::{
         parse::{ComparePoint, Modifier},
-        Expression,
+        Dice, DiceKind, Expression,
     };
 
     use super::{compare_point, parse_modifier, ExplodingKind, KeepKind, SortKind};
@@ -707,5 +708,17 @@ mod tests {
     fn test_compare_point_greater_than_or_equal() {
         let res = compare_point.parse(">=456").unwrap();
         assert_eq!(res, ComparePoint::GreaterThanOrEqual(456.0))
+    }
+
+    #[test]
+    fn test_zero_quantity_is_one() {
+        let dice = Dice::new(0, DiceKind::Standard(20), &[]);
+        assert_eq!(dice.quantity, 1);
+    }
+
+    #[test]
+    fn test_nine_nine_nine_quantity_if_over() {
+        let dice = Dice::new(932052380, DiceKind::Standard(20), &[]);
+        assert_eq!(dice.quantity, 999);
     }
 }
