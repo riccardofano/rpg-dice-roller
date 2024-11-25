@@ -22,8 +22,8 @@ pub enum ModifierFlags {
     CriticalFailure,
 }
 
-pub const MODIFER_NOTATION: [&str; 16] = [
-    "^", "v", "!", "!p", "!!", "!!p", "r", "ro", "u", "uo", "d", "d", "*", "_", "**", "__",
+pub const MODIFER_NOTATION: [&str; 15] = [
+    "^", "v", "!", "!p", "!!", "!!p", "r", "ro", "u", "uo", "d", "*", "_", "**", "__",
 ];
 
 #[derive(Debug, Clone, Copy)]
@@ -65,36 +65,55 @@ impl RollOutput {
         }
     }
 
-    #[rustfmt::skip]
-    pub fn value(&self) -> f64 {
-        let iter = self
-            .rolls
+    fn filter_dropped(&self) -> impl Iterator<Item = &Roll> {
+        self.rolls
             .iter()
-            .filter(|r| !r.was_modifier_applied(ModifierFlags::Drop as u8));
+            .filter(|r| !r.was_modifier_applied(ModifierFlags::Drop as u8))
+    }
 
+    /// Compute the proper value of the rolls based on the kind of modifiers
+    /// that were applied.
+    pub fn value(&self) -> f64 {
         match self.kind {
-            RollOutputKind::Sum => iter.map(|r| r.value as f64).sum(),
-            RollOutputKind::TargetSuccess => iter
-                .map(|r| {
-                    let success = r.was_modifier_applied(ModifierFlags::TargetSuccess as u8);
-                    if success { 1.0 } else { 0.0 }
-                })
-                .sum(),
-            RollOutputKind::TargetFailure => iter
-                .map(|r| {
-                    let success = r.was_modifier_applied(ModifierFlags::TargetSuccess as u8);
-                    let failure = r.was_modifier_applied(ModifierFlags::TargetFailure as u8);
-                    if success { 1.0 } else if failure { -1.0 } else { 0.0 }
-                })
-                .sum(),
+            RollOutputKind::Sum => self.sum(),
+            RollOutputKind::TargetSuccess => self.target_success(),
+            RollOutputKind::TargetFailure => self.target_failure(),
         }
     }
 
-    pub fn set_modifier_flag(&mut self, modifier_flag: u8) {
+    /// Compute the simple sum of all the rolls that weren't dropped.
+    pub fn sum(&self) -> f64 {
+        self.filter_dropped().map(|r| r.value as f64).sum()
+    }
+
+    /// Compute the sum of the rolls that passed the target success modifier.
+    #[rustfmt::skip]
+    pub fn target_success(&self) -> f64 {
+        self.filter_dropped()
+            .map(|r| {
+                let success = r.was_modifier_applied(ModifierFlags::TargetSuccess as u8);
+                if success { 1.0 } else { 0.0 }
+            })
+            .sum()
+    }
+
+    /// Compute the sum of the rolls that passed the target success modifier - the ones that failed it.
+    #[rustfmt::skip]
+    pub fn target_failure(&self) -> f64 {
+        self.filter_dropped()
+            .map(|r| {
+                let success = r.was_modifier_applied(ModifierFlags::TargetSuccess as u8);
+                let failure = r.was_modifier_applied(ModifierFlags::TargetFailure as u8);
+                if success { 1.0 } else if failure { -1.0 } else { 0.0 }
+            })
+            .sum()
+    }
+
+    fn _set_modifier_flag(&mut self, modifier_flag: u8) {
         self.modifier_flags |= 1 << modifier_flag;
     }
 
-    pub fn was_modifier_applied(&self, modifier_flag: u8) -> bool {
+    fn was_modifier_applied(&self, modifier_flag: u8) -> bool {
         (self.modifier_flags & (1 << modifier_flag)) != 0
     }
 }

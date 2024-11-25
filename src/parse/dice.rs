@@ -11,7 +11,10 @@ use super::{
 
 impl Modifier {
     const AMOUNT: usize = 12;
-    const LAST_ROLL_MODIFIER: u8 = 9; // Everything after Modifier::Keep should be done after the rolls
+    // Everything after Modifier::Unique should be done after the rolls because
+    // they don't add new rolls, they only look at the ones that were already
+    // rolled and adds modifiers
+    const LAST_ROLL_MODIFIER: u8 = 4;
 
     pub fn discriminant(&self) -> u8 {
         // SAFETY: Because `Self` is marked `repr(u8)`, its layout is a `repr(C)` `union`
@@ -54,7 +57,7 @@ impl Modifier {
         let first_post_roll_modifier = modifiers
             .iter()
             .position(|m| m.discriminant() >= Modifier::LAST_ROLL_MODIFIER)
-            .unwrap_or_else(|| modifiers.len() - 1);
+            .unwrap_or(modifiers.len());
 
         modifiers.split_at(first_post_roll_modifier)
     }

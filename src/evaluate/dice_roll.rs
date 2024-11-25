@@ -1,7 +1,7 @@
 use rand::Rng;
 
 use super::roll::{ModifierFlags, Roll, RollOutput, RollOutputKind};
-use crate::parse::{ComparePoint, Dice, DiceKind, ExplodingKind, KeepKind, Modifier};
+use crate::parse::{ComparePoint, Dice, DiceKind, ExplodingKind, KeepKind, Modifier, SortKind};
 
 const MAX_ITERATIONS: usize = 1001;
 
@@ -32,12 +32,13 @@ impl Dice {
 
         let mut output_kind = RollOutputKind::Sum;
         for modifier in post_modifiers {
+            apply_modifier(self, *modifier, &mut rolls_info, rng);
+
             match modifier {
                 Modifier::TargetSuccess(_) => output_kind = RollOutputKind::TargetSuccess,
                 Modifier::TargetFailure(_, _) => output_kind = RollOutputKind::TargetFailure,
                 _ => {}
             }
-            apply_modifier(self, *modifier, &mut rolls_info, rng);
         }
 
         RollOutput::new(rolls_info.all, output_kind)
@@ -93,19 +94,21 @@ fn apply_modifier(dice: &Dice, modifier: Modifier, rolls_info: &mut RollsInfo, r
         Modifier::Unique(once, compare_point) => {
             apply_unique(dice, rolls_info, rng, once, compare_point)
         }
-        Modifier::TargetSuccess(compare_point) => apply_target_success(rolls_info, compare_point),
+        Modifier::TargetSuccess(compare_point) => {
+            apply_target_success(&mut rolls_info.all, compare_point)
+        }
         Modifier::TargetFailure(success_cmp, failure_cmp) => {
-            apply_target_failure(rolls_info, success_cmp, failure_cmp)
+            apply_target_failure(&mut rolls_info.all, success_cmp, failure_cmp)
         }
         Modifier::CriticalSuccess(compare_point) => {
-            apply_critical_success(dice, rolls_info, compare_point)
+            apply_critical_success(dice, &mut rolls_info.all, compare_point)
         }
         Modifier::CriticalFailure(compare_point) => {
-            apply_critical_failure(dice, rolls_info, compare_point)
+            apply_critical_failure(dice, &mut rolls_info.all, compare_point)
         }
-        Modifier::Keep(keep_kind, amount) => apply_keep(rolls_info, keep_kind, amount),
-        Modifier::Drop(keep_kind, amount) => apply_drop(rolls_info, keep_kind, amount),
-        Modifier::Sort(sort_kind) => apply_sort(rolls_info, sort_kind),
+        Modifier::Keep(keep_kind, amount) => apply_keep(&mut rolls_info.all, keep_kind, amount),
+        Modifier::Drop(keep_kind, amount) => apply_drop(&mut rolls_info.all, keep_kind, amount),
+        Modifier::Sort(sort_kind) => apply_sort(&mut rolls_info.all, sort_kind),
     }
 }
 
@@ -259,101 +262,81 @@ fn apply_unique(
     }
 }
 
-fn apply_target_success(rolls_info: &mut RollsInfo, compare_point: ComparePoint) {
+fn apply_target_success(rolls: &mut [Roll], compare_point: ComparePoint) {
     let cmp_fn = compare_point.compare_fn();
 
-    if cmp_fn(rolls_info.current.value.into()) {
-        rolls_info
-            .current
-            .set_modifier_flag(ModifierFlags::TargetSuccess as u8);
+    for roll in rolls.iter_mut() {
+        if cmp_fn(f64::from(roll.value)) {
+            roll.set_modifier_flag(ModifierFlags::TargetSuccess as u8);
+        }
     }
 }
 
-fn apply_target_failure(
-    rolls_info: &mut RollsInfo,
-    success_cmp: ComparePoint,
-    failure_cmp: ComparePoint,
-) {
-    apply_target_success(rolls_info, success_cmp);
+fn apply_target_failure(rolls: &mut [Roll], success_cmp: ComparePoint, failure_cmp: ComparePoint) {
+    apply_target_success(rolls, success_cmp);
 
     let cmp_fn = failure_cmp.compare_fn();
-    if cmp_fn(rolls_info.current.value.into()) {
-        rolls_info
-            .current
-            .set_modifier_flag(ModifierFlags::TargetFailure as u8);
+    for roll in rolls.iter_mut() {
+        if cmp_fn(f64::from(roll.value)) {
+            roll.set_modifier_flag(ModifierFlags::TargetFailure as u8);
+        }
     }
 }
 
-fn apply_critical_success(
-    dice: &Dice,
-    rolls_info: &mut RollsInfo,
-    compare_point: Option<ComparePoint>,
-) {
+fn apply_critical_success(dice: &Dice, rolls: &mut [Roll], compare_point: Option<ComparePoint>) {
     let is_critical_success = match compare_point {
         Some(cmp) => cmp.compare_fn(),
         None => Box::new(|a| a == f64::from(dice.max_value())),
     };
 
-    if is_critical_success(rolls_info.current.value.into()) {
-        rolls_info
-            .current
-            .set_modifier_flag(ModifierFlags::CriticalSuccess as u8);
+    for roll in rolls.iter_mut() {
+        if is_critical_success(f64::from(roll.value)) {
+            roll.set_modifier_flag(ModifierFlags::CriticalSuccess as u8);
+        }
     }
 }
 
-fn apply_critical_failure(
-    dice: &Dice,
-    rolls_info: &mut RollsInfo,
-    compare_point: Option<ComparePoint>,
-) {
+fn apply_critical_failure(dice: &Dice, rolls: &mut [Roll], compare_point: Option<ComparePoint>) {
     let is_critical_fail = match compare_point {
         Some(cmp) => cmp.compare_fn(),
         None => Box::new(|a| a == f64::from(dice.min_value())),
     };
 
-    if is_critical_fail(rolls_info.current.value.into()) {
-        rolls_info
-            .current
-            .set_modifier_flag(ModifierFlags::CriticalFailure as u8);
+    for roll in rolls.iter_mut() {
+        if is_critical_fail(f64::from(roll.value)) {
+            roll.set_modifier_flag(ModifierFlags::CriticalFailure as u8);
+        }
     }
 }
 
-fn apply_keep(rolls_info: &mut RollsInfo, keep_kind: KeepKind, amount: u32) {
-    let mut indices: Vec<usize> = (0..rolls_info.all.len()).collect();
+fn apply_keep(rolls: &mut [Roll], keep_kind: KeepKind, amount: u32) {
+    let mut indices: Vec<usize> = (0..rolls.len()).collect();
     match keep_kind {
-        KeepKind::Highest => {
-            indices.sort_by(|&ia, &ib| rolls_info.all[ib].value.cmp(&rolls_info.all[ia].value))
-        }
-        KeepKind::Lowest => {
-            indices.sort_by(|&ia, &ib| rolls_info.all[ia].value.cmp(&rolls_info.all[ib].value))
-        }
+        KeepKind::Highest => indices.sort_by(|&ia, &ib| rolls[ib].value.cmp(&rolls[ia].value)),
+        KeepKind::Lowest => indices.sort_by(|&ia, &ib| rolls[ia].value.cmp(&rolls[ib].value)),
     }
 
     for &i in &indices[(amount as usize)..] {
-        rolls_info.all[i].set_modifier_flag(ModifierFlags::Drop as u8);
+        rolls[i].set_modifier_flag(ModifierFlags::Drop as u8);
     }
 }
 
-fn apply_drop(rolls_info: &mut RollsInfo, keep_kind: KeepKind, amount: u32) {
-    let mut indices: Vec<usize> = (0..rolls_info.all.len()).collect();
+fn apply_drop(rolls: &mut [Roll], keep_kind: KeepKind, amount: u32) {
+    let mut indices: Vec<usize> = (0..rolls.len()).collect();
     match keep_kind {
-        KeepKind::Highest => {
-            indices.sort_by(|&ia, &ib| rolls_info.all[ib].value.cmp(&rolls_info.all[ia].value))
-        }
-        KeepKind::Lowest => {
-            indices.sort_by(|&ia, &ib| rolls_info.all[ia].value.cmp(&rolls_info.all[ib].value))
-        }
+        KeepKind::Highest => indices.sort_by(|&ia, &ib| rolls[ib].value.cmp(&rolls[ia].value)),
+        KeepKind::Lowest => indices.sort_by(|&ia, &ib| rolls[ia].value.cmp(&rolls[ib].value)),
     }
 
     for &i in &indices[..(amount as usize)] {
-        rolls_info.all[i].set_modifier_flag(ModifierFlags::Drop as u8);
+        rolls[i].set_modifier_flag(ModifierFlags::Drop as u8);
     }
 }
 
-fn apply_sort(rolls_info: &mut RollsInfo, sort_kind: crate::parse::SortKind) {
+fn apply_sort(rolls: &mut [Roll], sort_kind: SortKind) {
     match sort_kind {
-        crate::parse::SortKind::Ascending => rolls_info.all.sort(),
-        crate::parse::SortKind::Descending => rolls_info.all.sort_by(|a, b| b.cmp(a)),
+        SortKind::Ascending => rolls.sort(),
+        SortKind::Descending => rolls.sort_by(|a, b| b.cmp(a)),
     }
 }
 
@@ -943,246 +926,191 @@ mod tests {
 
     #[test]
     fn test_modifier_target_success() {
-        let mut rolls_info = empty_rolls(Roll::new(2));
-        apply_target_success(&mut rolls_info, ComparePoint::Equal(2.0));
+        let mut rolls = [Roll::new(2)];
+        apply_target_success(&mut rolls, ComparePoint::Equal(2.0));
 
-        assert_eq!(rolls_info.current.value, 2);
-        assert!(rolls_info
-            .current
-            .was_modifier_applied(ModifierFlags::TargetSuccess as u8))
+        assert_eq!(rolls[0].value, 2);
+        assert!(rolls[0].was_modifier_applied(ModifierFlags::TargetSuccess as u8))
     }
 
     #[test]
     fn test_modifier_target_success_not_applied() {
-        let mut rolls_info = empty_rolls(Roll::new(2));
-        apply_target_success(&mut rolls_info, ComparePoint::Equal(3.0));
+        let mut rolls = [Roll::new(2)];
+        apply_target_success(&mut rolls, ComparePoint::Equal(3.0));
 
-        assert_eq!(rolls_info.current.value, 2);
-        assert!(!rolls_info
-            .current
-            .was_modifier_applied(ModifierFlags::TargetSuccess as u8))
+        assert_eq!(rolls[0].value, 2);
+        assert!(!rolls[0].was_modifier_applied(ModifierFlags::TargetSuccess as u8))
     }
 
     #[test]
     fn test_modifier_target_failure() {
-        let mut rolls_info = empty_rolls(Roll::new(1));
+        let mut rolls = [Roll::new(1)];
         apply_target_failure(
-            &mut rolls_info,
+            &mut rolls,
             ComparePoint::GreaterThan(5.0),
             ComparePoint::LessThanOrEqual(2.0),
         );
 
-        assert_eq!(rolls_info.current.value, 1);
-        assert!(rolls_info
-            .current
-            .was_modifier_applied(ModifierFlags::TargetFailure as u8))
+        assert_eq!(rolls[0].value, 1);
+        assert!(rolls[0].was_modifier_applied(ModifierFlags::TargetFailure as u8))
     }
 
     #[test]
     fn test_modifier_target_failure_success_applied() {
-        let mut rolls_info = empty_rolls(Roll::new(6));
+        let mut rolls = [Roll::new(6)];
         apply_target_failure(
-            &mut rolls_info,
+            &mut rolls,
             ComparePoint::GreaterThan(5.0),
             ComparePoint::LessThanOrEqual(2.0),
         );
 
-        assert_eq!(rolls_info.current.value, 6);
-        assert!(rolls_info
-            .current
-            .was_modifier_applied(ModifierFlags::TargetSuccess as u8))
+        assert_eq!(rolls[0].value, 6);
+        assert!(rolls[0].was_modifier_applied(ModifierFlags::TargetSuccess as u8))
     }
 
     #[test]
     fn test_modifier_target_failure_not_applied() {
-        let mut rolls_info = empty_rolls(Roll::new(4));
+        let mut rolls = [Roll::new(4)];
         apply_target_failure(
-            &mut rolls_info,
+            &mut rolls,
             ComparePoint::LessThan(2.0),
             ComparePoint::GreaterThan(5.0),
         );
 
-        assert_eq!(rolls_info.current.value, 4);
-        assert!(!rolls_info
-            .current
-            .was_modifier_applied(ModifierFlags::TargetFailure as u8))
+        assert_eq!(rolls[0].value, 4);
+        assert!(!rolls[0].was_modifier_applied(ModifierFlags::TargetFailure as u8))
     }
 
     #[test]
     fn test_modifier_critical_success() {
-        let mut rolls_info = empty_rolls(Roll::new(6));
-        apply_critical_success(&five_d6(vec![]), &mut rolls_info, None);
+        let mut rolls = [Roll::new(6)];
+        apply_critical_success(&five_d6(vec![]), &mut rolls, None);
 
-        assert_eq!(rolls_info.current.value, 6);
-        assert!(rolls_info
-            .current
-            .was_modifier_applied(ModifierFlags::CriticalSuccess as u8))
+        assert_eq!(rolls[0].value, 6);
+        assert!(rolls[0].was_modifier_applied(ModifierFlags::CriticalSuccess as u8))
     }
 
     #[test]
     fn test_modifier_critical_success_compare_point() {
-        let mut rolls_info = empty_rolls(Roll::new(2));
-        apply_critical_success(
-            &five_d6(vec![]),
-            &mut rolls_info,
-            Some(ComparePoint::Equal(2.0)),
-        );
+        let mut rolls = [Roll::new(2)];
+        apply_critical_success(&five_d6(vec![]), &mut rolls, Some(ComparePoint::Equal(2.0)));
 
-        assert_eq!(rolls_info.current.value, 2);
-        assert!(rolls_info
-            .current
-            .was_modifier_applied(ModifierFlags::CriticalSuccess as u8))
+        assert_eq!(rolls[0].value, 2);
+        assert!(rolls[0].was_modifier_applied(ModifierFlags::CriticalSuccess as u8))
     }
 
     #[test]
     fn test_modifier_critical_success_not_applied() {
-        let mut rolls_info = empty_rolls(Roll::new(2));
-        apply_critical_success(
-            &five_d6(vec![]),
-            &mut rolls_info,
-            Some(ComparePoint::Equal(3.0)),
-        );
+        let mut rolls = [Roll::new(2)];
+        apply_critical_success(&five_d6(vec![]), &mut rolls, Some(ComparePoint::Equal(3.0)));
 
-        assert_eq!(rolls_info.current.value, 2);
-        assert!(!rolls_info
-            .current
-            .was_modifier_applied(ModifierFlags::CriticalSuccess as u8))
+        assert_eq!(rolls[0].value, 2);
+        assert!(!rolls[0].was_modifier_applied(ModifierFlags::CriticalSuccess as u8))
     }
 
     #[test]
     fn test_modifier_critical_failure() {
-        let mut rolls_info = empty_rolls(Roll::new(1));
-        apply_critical_failure(&five_d6(vec![]), &mut rolls_info, None);
+        let mut rolls = [Roll::new(1)];
+        apply_critical_failure(&five_d6(vec![]), &mut rolls, None);
 
-        assert_eq!(rolls_info.current.value, 1);
-        assert!(rolls_info
-            .current
-            .was_modifier_applied(ModifierFlags::CriticalFailure as u8))
+        assert_eq!(rolls[0].value, 1);
+        assert!(rolls[0].was_modifier_applied(ModifierFlags::CriticalFailure as u8))
     }
 
     #[test]
     fn test_modifier_critical_failure_compare_point() {
-        let mut rolls_info = empty_rolls(Roll::new(1));
+        let mut rolls = [Roll::new(1)];
         apply_critical_failure(
             &five_d6(vec![]),
-            &mut rolls_info,
+            &mut rolls,
             Some(ComparePoint::LessThanOrEqual(2.0)),
         );
 
-        assert_eq!(rolls_info.current.value, 1);
-        assert!(rolls_info
-            .current
-            .was_modifier_applied(ModifierFlags::CriticalFailure as u8))
+        assert_eq!(rolls[0].value, 1);
+        assert!(rolls[0].was_modifier_applied(ModifierFlags::CriticalFailure as u8))
     }
 
     #[test]
     fn test_modifier_critical_failure_not_applied() {
-        let mut rolls_info = empty_rolls(Roll::new(4));
+        let mut rolls = [Roll::new(4)];
         apply_critical_failure(
             &five_d6(vec![]),
-            &mut rolls_info,
+            &mut rolls,
             Some(ComparePoint::GreaterThan(5.0)),
         );
 
-        assert_eq!(rolls_info.current.value, 4);
-        assert!(!rolls_info
-            .current
-            .was_modifier_applied(ModifierFlags::CriticalFailure as u8))
+        assert_eq!(rolls[0].value, 4);
+        assert!(!rolls[0].was_modifier_applied(ModifierFlags::CriticalFailure as u8))
     }
 
     #[test]
     fn test_modifier_keep() {
-        let mut rolls_info = RollsInfo {
-            all: vec![Roll::new(1), Roll::new(2), Roll::new(3), Roll::new(4)],
-            current: Roll::new(1),
-        };
+        let mut rolls = [Roll::new(1), Roll::new(2), Roll::new(3), Roll::new(4)];
+        apply_keep(&mut rolls, KeepKind::Highest, 2);
 
-        apply_keep(&mut rolls_info, KeepKind::Highest, 2);
-
-        assert_eq!(to_notations(&rolls_info.all), "[1d, 2d, 3, 4]");
+        assert_eq!(to_notations(&rolls), "[1d, 2d, 3, 4]");
     }
 
     #[test]
     fn test_modifier_keep_not_ordered() {
-        let mut rolls_info = RollsInfo {
-            all: vec![Roll::new(2), Roll::new(3), Roll::new(4), Roll::new(1)],
-            current: Roll::new(1),
-        };
+        let mut rolls = [Roll::new(2), Roll::new(3), Roll::new(4), Roll::new(1)];
 
-        apply_keep(&mut rolls_info, KeepKind::Highest, 2);
+        apply_keep(&mut rolls, KeepKind::Highest, 2);
 
-        assert_eq!(to_notations(&rolls_info.all), "[2d, 3, 4, 1d]");
+        assert_eq!(to_notations(&rolls), "[2d, 3, 4, 1d]");
     }
 
     #[test]
     fn test_modifier_keep_lowest_not_ordered() {
-        let mut rolls_info = RollsInfo {
-            all: vec![Roll::new(2), Roll::new(3), Roll::new(4), Roll::new(1)],
-            current: Roll::new(1),
-        };
+        let mut rolls = [Roll::new(2), Roll::new(3), Roll::new(4), Roll::new(1)];
 
-        apply_keep(&mut rolls_info, KeepKind::Lowest, 2);
+        apply_keep(&mut rolls, KeepKind::Lowest, 2);
 
-        assert_eq!(to_notations(&rolls_info.all), "[2, 3d, 4d, 1]");
+        assert_eq!(to_notations(&rolls), "[2, 3d, 4d, 1]");
     }
 
     #[test]
     fn test_modifier_drop() {
-        let mut rolls_info = RollsInfo {
-            all: vec![Roll::new(1), Roll::new(2), Roll::new(3), Roll::new(4)],
-            current: Roll::new(1),
-        };
+        let mut rolls = [Roll::new(1), Roll::new(2), Roll::new(3), Roll::new(4)];
 
-        apply_drop(&mut rolls_info, KeepKind::Highest, 3);
+        apply_drop(&mut rolls, KeepKind::Highest, 3);
 
-        assert_eq!(to_notations(&rolls_info.all), "[1, 2d, 3d, 4d]");
+        assert_eq!(to_notations(&rolls), "[1, 2d, 3d, 4d]");
     }
 
     #[test]
     fn test_modifier_drop_not_ordered() {
-        let mut rolls_info = RollsInfo {
-            all: vec![Roll::new(2), Roll::new(3), Roll::new(4), Roll::new(1)],
-            current: Roll::new(1),
-        };
+        let mut rolls = [Roll::new(2), Roll::new(3), Roll::new(4), Roll::new(1)];
 
-        apply_drop(&mut rolls_info, KeepKind::Highest, 1);
+        apply_drop(&mut rolls, KeepKind::Highest, 1);
 
-        assert_eq!(to_notations(&rolls_info.all), "[2, 3, 4d, 1]");
+        assert_eq!(to_notations(&rolls), "[2, 3, 4d, 1]");
     }
 
     #[test]
     fn test_modifier_drop_lowest_not_ordered() {
-        let mut rolls_info = RollsInfo {
-            all: vec![Roll::new(2), Roll::new(3), Roll::new(4), Roll::new(1)],
-            current: Roll::new(1),
-        };
+        let mut rolls = [Roll::new(2), Roll::new(3), Roll::new(4), Roll::new(1)];
 
-        apply_drop(&mut rolls_info, KeepKind::Lowest, 1);
+        apply_drop(&mut rolls, KeepKind::Lowest, 1);
 
-        assert_eq!(to_notations(&rolls_info.all), "[2, 3, 4, 1d]");
+        assert_eq!(to_notations(&rolls), "[2, 3, 4, 1d]");
     }
 
     #[test]
     fn test_modifier_sort_ascending() {
-        let mut rolls_info = RollsInfo {
-            all: vec![Roll::new(2), Roll::new(3), Roll::new(4), Roll::new(1)],
-            current: Roll::new(1),
-        };
+        let mut rolls = [Roll::new(2), Roll::new(3), Roll::new(4), Roll::new(1)];
 
-        apply_sort(&mut rolls_info, SortKind::Ascending);
+        apply_sort(&mut rolls, SortKind::Ascending);
 
-        assert_eq!(values(&rolls_info.all), [1, 2, 3, 4]);
+        assert_eq!(values(&rolls), [1, 2, 3, 4]);
     }
 
     #[test]
     fn test_modifier_sort_descending() {
-        let mut rolls_info = RollsInfo {
-            all: vec![Roll::new(2), Roll::new(3), Roll::new(4), Roll::new(1)],
-            current: Roll::new(1),
-        };
+        let mut rolls = [Roll::new(2), Roll::new(3), Roll::new(4), Roll::new(1)];
 
-        apply_sort(&mut rolls_info, SortKind::Descending);
+        apply_sort(&mut rolls, SortKind::Descending);
 
-        assert_eq!(values(&rolls_info.all), [4, 3, 2, 1]);
+        assert_eq!(values(&rolls), [4, 3, 2, 1]);
     }
 }
