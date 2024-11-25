@@ -4,7 +4,6 @@ use super::roll::{ModifierFlags, Roll, RollOutput, RollOutputKind};
 use crate::parse::{ComparePoint, Dice, DiceKind, ExplodingKind, KeepKind, Modifier};
 
 const MAX_ITERATIONS: usize = 1001;
-const END_MODIFIER_CUTOFF: u8 = 9; // Everything after Modifier::Keep should be done after the rolls
 
 struct RollsInfo {
     all: Vec<Roll>,
@@ -12,27 +11,17 @@ struct RollsInfo {
 }
 
 impl Dice {
-    pub fn roll_all(&self, rng: &mut impl Rng) -> RollOutput {
+    fn roll_amount(&self, amount: usize, rng: &mut impl Rng) -> RollOutput {
         let mut rolls_info = RollsInfo {
-            all: Vec::with_capacity(self.quantity as usize),
+            all: Vec::with_capacity(amount),
             current: Roll::new(0),
         };
 
-        let first_post_roll_modifier = self
-            .modifiers
-            .iter()
-            .position(|m| m.discriminant() >= END_MODIFIER_CUTOFF)
-            .unwrap_or_else(|| {
-                if self.modifiers.is_empty() {
-                    0
-                } else {
-                    self.modifiers.len() - 1
-                }
-            });
-        let (roll_modifiers, post_modifiers) = self.modifiers.split_at(first_post_roll_modifier);
+        let (roll_modifiers, post_modifiers) =
+            Modifier::split_roll_and_output_modifiers(&self.modifiers);
 
-        for _ in 0..self.quantity {
-            rolls_info.current = Roll::new(self.roll_once(rng));
+        for _ in 0..amount {
+            rolls_info.current = Roll::new(self.roll_value(rng));
 
             for modifier in roll_modifiers {
                 apply_modifier(self, *modifier, &mut rolls_info, rng);
@@ -54,7 +43,17 @@ impl Dice {
         RollOutput::new(rolls_info.all, output_kind)
     }
 
-    pub fn roll_once(&self, rng: &mut impl Rng) -> i32 {
+    /// Roll the full quantity of the dice.
+    pub fn roll_all(&self, rng: &mut impl Rng) -> RollOutput {
+        self.roll_amount(self.quantity as usize, rng)
+    }
+
+    /// Roll the dice only once.
+    pub fn roll_once(&self, rng: &mut impl Rng) -> RollOutput {
+        self.roll_amount(1, rng)
+    }
+
+    fn roll_value(&self, rng: &mut impl Rng) -> i32 {
         let random_value: f32 = rng.gen();
 
         match self.kind {
@@ -64,7 +63,7 @@ impl Dice {
         }
     }
 
-    pub fn max_value(&self) -> i32 {
+    fn max_value(&self) -> i32 {
         match self.kind {
             DiceKind::Standard(sides) => sides as i32,
             DiceKind::Fudge1 => 1,
@@ -72,7 +71,7 @@ impl Dice {
         }
     }
 
-    pub fn min_value(&self) -> i32 {
+    fn min_value(&self) -> i32 {
         match self.kind {
             DiceKind::Standard(_) => 1,
             DiceKind::Fudge1 => -1,
@@ -148,7 +147,7 @@ fn apply_exploding(
                     .set_modifier_flag(ModifierFlags::ExplodingStandard as u8);
                 rolls_info.all.push(rolls_info.current);
 
-                let new_roll_value = dice.roll_once(rng);
+                let new_roll_value = dice.roll_value(rng);
                 rolls_info.current = Roll::new(new_roll_value);
             }
         }
@@ -163,7 +162,7 @@ fn apply_exploding(
                     .set_modifier_flag(ModifierFlags::ExplodingPenetrating as u8);
                 rolls_info.all.push(rolls_info.current);
 
-                let new_roll_value = dice.roll_once(rng);
+                let new_roll_value = dice.roll_value(rng);
                 rolls_info.current = Roll::new(new_roll_value - 1);
             }
         }
@@ -178,7 +177,7 @@ fn apply_exploding(
                 rolls_info
                     .current
                     .set_modifier_flag(ModifierFlags::ExplodingCompounding as u8);
-                last_roll_value = dice.roll_once(rng);
+                last_roll_value = dice.roll_value(rng);
                 rolls_info.current.value += last_roll_value;
             }
         }
@@ -193,7 +192,7 @@ fn apply_exploding(
                 rolls_info
                     .current
                     .set_modifier_flag(ModifierFlags::ExplodingPenetratingCompounding as u8);
-                last_roll_value = dice.roll_once(rng) - 1;
+                last_roll_value = dice.roll_value(rng) - 1;
                 rolls_info.current.value += last_roll_value;
             }
         }
@@ -223,7 +222,7 @@ fn apply_reroll(
         }
 
         rolls_info.current.set_modifier_flag(modifier_flag as u8);
-        rolls_info.current.value = dice.roll_once(rng);
+        rolls_info.current.value = dice.roll_value(rng);
     }
 }
 
@@ -256,7 +255,7 @@ fn apply_unique(
         }
 
         rolls_info.current.set_modifier_flag(modifier_flag as u8);
-        rolls_info.current.value = dice.roll_once(rng);
+        rolls_info.current.value = dice.roll_value(rng);
     }
 }
 

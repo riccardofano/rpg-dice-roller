@@ -9,9 +9,10 @@ use super::{
     KeepKind, Modifier, SortKind,
 };
 
-const TOTAL_MODIFIERS: usize = 12;
-
 impl Modifier {
+    const AMOUNT: usize = 12;
+    const LAST_ROLL_MODIFIER: u8 = 9; // Everything after Modifier::Keep should be done after the rolls
+
     pub fn discriminant(&self) -> u8 {
         // SAFETY: Because `Self` is marked `repr(u8)`, its layout is a `repr(C)` `union`
         // between `repr(C)` structs, each of which has the `u8` discriminant as its first
@@ -31,7 +32,7 @@ impl Modifier {
     pub(crate) fn filter(modifiers: &[Modifier]) -> Vec<Modifier> {
         assert!(modifiers.len() < usize::MAX, "cmon, really?");
 
-        let mut modifier_indices = [0; TOTAL_MODIFIERS];
+        let mut modifier_indices = [0; Modifier::AMOUNT];
         for (i, modifier) in modifiers.iter().enumerate() {
             modifier_indices[modifier.discriminant() as usize] = i + 1;
         }
@@ -41,6 +42,21 @@ impl Modifier {
             .filter(|&i| i > 0)
             .map(|i| modifiers[i - 1])
             .collect()
+    }
+
+    pub(crate) fn split_roll_and_output_modifiers(
+        modifiers: &[Modifier],
+    ) -> (&[Modifier], &[Modifier]) {
+        if modifiers.is_empty() {
+            return (&[], &[]);
+        }
+
+        let first_post_roll_modifier = modifiers
+            .iter()
+            .position(|m| m.discriminant() >= Modifier::LAST_ROLL_MODIFIER)
+            .unwrap_or_else(|| modifiers.len() - 1);
+
+        modifiers.split_at(first_post_roll_modifier)
     }
 }
 impl PartialOrd for Modifier {
