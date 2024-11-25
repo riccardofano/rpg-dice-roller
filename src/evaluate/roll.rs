@@ -28,19 +28,19 @@ pub const MODIFER_NOTATION: [&str; 15] = [
 
 #[derive(Debug, Clone, Copy)]
 pub struct Roll {
-    pub(crate) value: i32,
+    pub value: i32,
     pub(crate) modifier_flags: u32,
 }
 
 impl Roll {
-    pub fn new(value: i32) -> Self {
+    pub(crate) fn new(value: i32) -> Self {
         Self {
             value,
             modifier_flags: 0,
         }
     }
 
-    pub fn set_modifier_flag(&mut self, modifier_flag: u8) {
+    pub(crate) fn set_modifier_flag(&mut self, modifier_flag: u8) {
         self.modifier_flags |= 1 << modifier_flag;
     }
 
@@ -51,7 +51,7 @@ impl Roll {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RollOutput {
-    pub(crate) rolls: Vec<Roll>,
+    pub rolls: Vec<Roll>,
     pub(crate) kind: RollOutputKind,
     pub(crate) modifier_flags: u32,
 }
@@ -63,6 +63,10 @@ impl RollOutput {
             kind,
             modifier_flags: 0,
         }
+    }
+
+    pub fn kind(&self) -> RollOutputKind {
+        self.kind
     }
 
     fn filter_dropped(&self) -> impl Iterator<Item = &Roll> {

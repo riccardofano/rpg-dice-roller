@@ -13,7 +13,7 @@ impl Modifier {
     const AMOUNT: usize = 12;
     // Everything after Modifier::Unique should be done after the rolls because
     // they don't add new rolls, they only look at the ones that were already
-    // rolled and adds modifiers
+    // rolled and add modifiers
     const LAST_ROLL_MODIFIER: u8 = 4;
 
     pub fn discriminant(&self) -> u8 {
