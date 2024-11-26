@@ -1,6 +1,8 @@
 use winnow::{
     ascii::{dec_int, dec_uint, multispace0},
-    combinator::{alt, cut_err, delimited, fail, opt, preceded, repeat, separated_pair},
+    combinator::{
+        alt, cut_err, delimited, fail, opt, preceded, repeat, separated_pair, terminated,
+    },
     PResult, Parser,
 };
 
@@ -69,39 +71,39 @@ impl PartialOrd for Modifier {
 }
 
 pub fn parse_dice_standard(input: &mut &str) -> PResult<Expression> {
-    separated_pair(
-        opt(parse_dice_quantity),
-        'd',
-        (cut_err(parse_dice_sides), repeat(0.., parse_modifier)),
+    (
+        separated_pair(opt(parse_dice_quantity), 'd', cut_err(parse_dice_sides)),
+        repeat(0.., parse_modifier),
     )
-    .map(|(qty, (sides, modifiers))| {
-        Expression::DiceStandard(qty.map(Box::new), Box::new(sides), modifiers)
-    })
-    .parse_next(input)
+        .map(|((qty, sides), modifiers)| {
+            Expression::DiceStandard(qty.map(Box::new), Box::new(sides), modifiers)
+        })
+        .parse_next(input)
 }
 
 pub fn parse_dice_fudge1(input: &mut &str) -> PResult<Expression> {
-    separated_pair(
-        opt(parse_dice_quantity),
-        "dF.1",
+    (
+        terminated(opt(parse_dice_quantity), "dF.1"),
         repeat(0.., parse_modifier),
     )
-    .map(|(qty, modifiers)| Expression::DiceFudge1(qty.map(Box::new), modifiers))
-    .parse_next(input)
+        .map(|(qty, modifiers)| Expression::DiceFudge1(qty.map(Box::new), modifiers))
+        .parse_next(input)
 }
 
 pub fn parse_dice_fudge2(input: &mut &str) -> PResult<Expression> {
-    separated_pair(
-        opt(parse_dice_quantity),
-        alt(("dF.2", "dF")),
+    (
+        terminated(opt(parse_dice_quantity), alt(("dF.2", "dF"))),
         repeat(0.., parse_modifier),
     )
-    .map(|(qty, modifiers)| Expression::DiceFudge2(qty.map(Box::new), modifiers))
-    .parse_next(input)
+        .map(|(qty, modifiers)| Expression::DiceFudge2(qty.map(Box::new), modifiers))
+        .parse_next(input)
 }
 
 pub fn parse_dice_percentile(input: &mut &str) -> PResult<Expression> {
-    separated_pair(opt(parse_dice_quantity), "d%", repeat(0.., parse_modifier))
+    (
+        terminated(opt(parse_dice_quantity), "d%"),
+        repeat(0.., parse_modifier),
+    )
         .map(|(qty, modifiers)| Expression::DicePercentile(qty.map(Box::new), modifiers))
         .parse_next(input)
 }
