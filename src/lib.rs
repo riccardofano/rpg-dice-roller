@@ -30,7 +30,7 @@ mod tests {
 
     #[test]
     fn test_running() {
-        let input = "dF<";
+        let input = "dF=1";
 
         // let expression = parse(input).unwrap();
 

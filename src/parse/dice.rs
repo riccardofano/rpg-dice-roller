@@ -224,15 +224,32 @@ pub fn parse_group_modifier(input: &mut &str) -> PResult<Modifier> {
 
 fn compare_point(input: &mut &str) -> PResult<ComparePoint> {
     alt((
-        preceded("<=", cut_err(dec_int)).map(|i: i32| ComparePoint::LessThanOrEqual(f64::from(i))),
+        preceded("<=", cut_err(dec_int))
+            .context(ctx_label("less than or equal compare point"))
+            .context(ctx_descr("an integer"))
+            .map(|i: i32| ComparePoint::LessThanOrEqual(f64::from(i))),
         preceded(">=", cut_err(dec_int))
+            .context(ctx_label("greater than or equal compare point"))
+            .context(ctx_descr("an integer"))
             .map(|i: i32| ComparePoint::GreaterThanOrEqual(f64::from(i))),
         // TODO: Missing != (not equal), it should work with every modifier
         // except the exploding ones, those need to use <>
-        preceded("<>", cut_err(dec_int)).map(|i: i32| ComparePoint::NotEqual(f64::from(i))),
-        preceded('=', cut_err(dec_int)).map(|i: i32| ComparePoint::Equal(f64::from(i))),
-        preceded('<', cut_err(dec_int)).map(|i: i32| ComparePoint::LessThan(f64::from(i))),
-        preceded('>', cut_err(dec_int)).map(|i: i32| ComparePoint::GreaterThan(f64::from(i))),
+        preceded("<>", cut_err(dec_int))
+            .context(ctx_label("not equal compare point"))
+            .context(ctx_descr("an integer"))
+            .map(|i: i32| ComparePoint::NotEqual(f64::from(i))),
+        preceded('=', cut_err(dec_int))
+            .context(ctx_label("equals compare point"))
+            .context(ctx_descr("an integer"))
+            .map(|i: i32| ComparePoint::Equal(f64::from(i))),
+        preceded('<', cut_err(dec_int))
+            .context(ctx_label("less than compare point"))
+            .context(ctx_descr("an integer"))
+            .map(|i: i32| ComparePoint::LessThan(f64::from(i))),
+        preceded('>', cut_err(dec_int))
+            .context(ctx_label("greater than compare point"))
+            .context(ctx_descr("an integer"))
+            .map(|i: i32| ComparePoint::GreaterThan(f64::from(i))),
     ))
     .parse_next(input)
 }
