@@ -144,11 +144,11 @@ pub fn parse_modifier(input: &mut &str) -> PResult<Modifier> {
     alt((
         preceded("min", cut_err(dec_int))
             .context(ctx_label("min modifier"))
-            .context(ctx_descr("positive integer"))
+            .context(ctx_descr("a positive integer"))
             .map(Modifier::Min),
         preceded("max", cut_err(dec_int))
             .context(ctx_label("min modifier"))
-            .context(ctx_descr("positive integer"))
+            .context(ctx_descr("a positive integer"))
             .map(Modifier::Max),
         // TODO: Shouldn't cut_err because the ! could be a ComparePoint::NotEqual,
         // I might decide to not support != because it's confusing, it's standard syntax
@@ -166,19 +166,28 @@ pub fn parse_modifier(input: &mut &str) -> PResult<Modifier> {
         preceded("u", opt(compare_point)).map(|cp| Modifier::Unique(false, cp)),
         preceded("kl", cut_err(dec_uint))
             .context(ctx_label("keep lowest modifier"))
-            .context(ctx_descr("positive integer"))
+            .context(ctx_descr("a positive integer"))
             .map(|n| Modifier::Keep(KeepKind::Lowest, n)),
         preceded("kh", cut_err(dec_uint))
             .context(ctx_label("keep highest modifier"))
-            .context(ctx_descr("positive integer"))
+            .context(ctx_descr("a positive integer"))
             .map(|n| Modifier::Keep(KeepKind::Highest, n)),
         preceded('k', cut_err(dec_uint))
             .context(ctx_label("keep highest modifier"))
-            .context(ctx_descr("positive integer"))
+            .context(ctx_descr("a positive integer"))
             .map(|n| Modifier::Keep(KeepKind::Highest, n)),
-        preceded("dh", cut_err(dec_uint)).map(|n| Modifier::Drop(KeepKind::Highest, n)),
-        preceded("dl", cut_err(dec_uint)).map(|n| Modifier::Drop(KeepKind::Lowest, n)),
-        preceded('d', cut_err(dec_uint)).map(|n| Modifier::Drop(KeepKind::Lowest, n)),
+        preceded("dh", cut_err(dec_uint))
+            .context(ctx_label("drop highest modifier"))
+            .context(ctx_descr("a positive integer"))
+            .map(|n| Modifier::Drop(KeepKind::Highest, n)),
+        preceded("dl", cut_err(dec_uint))
+            .context(ctx_label("drop lowest modifier"))
+            .context(ctx_descr("a positive integer"))
+            .map(|n| Modifier::Drop(KeepKind::Lowest, n)),
+        preceded('d', cut_err(dec_uint))
+            .context(ctx_label("drop lowest modifier"))
+            .context(ctx_descr("a positive integer"))
+            .map(|n| Modifier::Drop(KeepKind::Lowest, n)),
         preceded("cs", opt(compare_point)).map(Modifier::CriticalSuccess),
         preceded("cf", opt(compare_point)).map(Modifier::CriticalFailure),
         "sa".map(|_| Modifier::Sort(SortKind::Ascending)),
@@ -250,6 +259,14 @@ fn compare_point(input: &mut &str) -> PResult<ComparePoint> {
             .context(ctx_label("greater than compare point"))
             .context(ctx_descr("an integer"))
             .map(|i: i32| ComparePoint::GreaterThan(f64::from(i))),
+        fail.context(ctx_label("compare point"))
+            .context(ctx_str("<"))
+            .context(ctx_str("<="))
+            .context(ctx_str("="))
+            .context(ctx_str("<>"))
+            .context(ctx_str(">="))
+            .context(ctx_descr("or `>`"))
+            .context(ctx_descr("and an integer")),
     ))
     .parse_next(input)
 }
