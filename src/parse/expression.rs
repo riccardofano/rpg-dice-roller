@@ -21,7 +21,7 @@ impl Expression {
             // This means it doesn't have any context so add some generic context
             if formatted_error.ends_with('\n') {
                 formatted_error.push_str("Invalid expression. ");
-                match e.input().is_empty() {
+                match e.offset() == input.len() {
                     true => formatted_error.push_str("Unexpected end of string."),
                     false => formatted_error.push_str("Unexpected symbol."),
                 }
