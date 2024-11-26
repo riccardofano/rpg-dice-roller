@@ -21,19 +21,3 @@ pub fn roll_with(notation: &str, rng: &mut impl rand::Rng) -> Result<RolledExpre
     let expression = Expression::parse(notation)?;
     Ok(expression.roll(rng))
 }
-
-#[cfg(test)]
-mod tests {
-    use rand::{rngs::StdRng, SeedableRng};
-
-    use super::*;
-
-    #[test]
-    fn test_running() {
-        let input = "min";
-
-        let expression = parse(input).unwrap();
-
-        todo!()
-    }
-}

@@ -163,7 +163,12 @@ fn parse_fn2_name(input: &mut &str) -> PResult<MathFn2> {
 }
 
 pub fn parse_fn1(input: &mut &str) -> PResult<Expression> {
-    (parse_fn1_name, cut_err(parse_parens))
+    (
+        parse_fn1_name,
+        cut_err(parse_parens)
+            .context(ctx_label("function"))
+            .context(ctx_descr("expression surrounded by parenthesis")),
+    )
         .map(|(f, arg)| Expression::Fn1(f, Box::new(arg)))
         .parse_next(input)
 }
@@ -173,8 +178,16 @@ pub fn parse_fn2(input: &mut &str) -> PResult<Expression> {
         parse_fn2_name,
         cut_err(delimited(
             '(',
-            separated_pair(parse_expr, ',', parse_expr),
+            separated_pair(
+                parse_expr,
+                ',',
+                cut_err(parse_expr).context(ctx_label("second argument")),
+            ),
             ')',
+        ))
+        .context(ctx_label("function"))
+        .context(ctx_descr(
+            "2 comma separated expressions surrounded by parenthesis",
         )),
     )
         .map(|(f, (arg1, arg2))| Expression::Fn2(f, Box::new(arg1), Box::new(arg2)))
