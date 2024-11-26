@@ -3,6 +3,7 @@ use winnow::{
     combinator::{
         alt, cut_err, delimited, dispatch, empty, fail, repeat, separated, separated_pair,
     },
+    error::{StrContext, StrContextValue},
     token::any,
     PResult, Parser,
 };
@@ -14,14 +15,27 @@ use super::{
 
 impl Expression {
     pub(crate) fn parse(input: &str) -> Result<Self, String> {
-        parse_expr.parse(input).map_err(|e| e.to_string())
+        parse_expr.parse(input).map_err(|e| {
+            let mut formatted_error = e.to_string();
+
+            // This means it doesn't have any context so add some generic context
+            if formatted_error.ends_with('\n') {
+                formatted_error.push_str("Invalid expression. ");
+                match e.offset() == input.len() {
+                    true => formatted_error.push_str("Unexpected end of string."),
+                    false => formatted_error.push_str("Unexpected symbol."),
+                }
+            }
+
+            formatted_error
+        })
     }
 }
 
 pub fn parse_expr(input: &mut &str) -> PResult<Expression> {
     let init = parse_term.parse_next(input)?;
 
-    repeat(0.., (low_precendence_operator, parse_term))
+    repeat(0.., (low_precendence_operator, cut_err(parse_term)))
         .fold(
             move || init.clone(),
             |acc, (op, val): (Operator, Expression)| {
@@ -34,7 +48,7 @@ pub fn parse_expr(input: &mut &str) -> PResult<Expression> {
 fn parse_term(input: &mut &str) -> PResult<Expression> {
     let init = parse_factor(input)?;
 
-    repeat(0.., (high_precendence_operator, parse_factor))
+    repeat(0.., (high_precendence_operator, cut_err(parse_factor)))
         .fold(
             move || init.clone(),
             |acc, (op, val): (Operator, Expression)| {
@@ -57,6 +71,16 @@ fn parse_factor(input: &mut &str) -> PResult<Expression> {
             parse_roll_groups,
             parse_parens,
             dec_uint.map(|i: u32| Expression::Value(i as f64)),
+            cut_err(fail)
+                .context(ctx_label("factor"))
+                .context(ctx_descr("Fudge 1 dice: dF.1"))
+                .context(ctx_descr("Fudge 2 dice: dF or dF.2"))
+                .context(ctx_descr("Percentile dice: d%"))
+                .context(ctx_descr("Standard dice: d6, d20, etc."))
+                .context(ctx_descr("Function with 1 or 2 arguments"))
+                .context(ctx_descr("Roll group: { .. }"))
+                .context(ctx_descr("Parens: ( .. )"))
+                .context(ctx_descr("Positive integer")),
         )),
         multispace0,
     )
@@ -98,6 +122,15 @@ fn high_precendence_operator(input: &mut &str) -> PResult<Operator> {
         '%' => empty.value(Operator::Rem),
         '^' => empty.value(Operator::Pow),
         _ => fail
+            // If I'm here it means I couldn't find neither an high or low operator
+            .context(ctx_label("operator"))
+            .context(ctx_char('+'))
+            .context(ctx_char('-'))
+            .context(ctx_char('*'))
+            .context(ctx_char('/'))
+            .context(ctx_char('%'))
+            .context(ctx_char('^'))
+            .context(ctx_str("**"))
     )
     .parse_next(input)
 }
@@ -130,7 +163,12 @@ fn parse_fn2_name(input: &mut &str) -> PResult<MathFn2> {
 }
 
 pub fn parse_fn1(input: &mut &str) -> PResult<Expression> {
-    (parse_fn1_name, cut_err(parse_parens))
+    (
+        parse_fn1_name,
+        cut_err(parse_parens)
+            .context(ctx_label("function"))
+            .context(ctx_descr("expression surrounded by parenthesis")),
+    )
         .map(|(f, arg)| Expression::Fn1(f, Box::new(arg)))
         .parse_next(input)
 }
@@ -140,12 +178,33 @@ pub fn parse_fn2(input: &mut &str) -> PResult<Expression> {
         parse_fn2_name,
         cut_err(delimited(
             '(',
-            separated_pair(parse_expr, ',', parse_expr),
+            separated_pair(
+                parse_expr,
+                ',',
+                cut_err(parse_expr).context(ctx_label("second argument")),
+            ),
             ')',
+        ))
+        .context(ctx_label("function"))
+        .context(ctx_descr(
+            "2 comma separated expressions surrounded by parenthesis",
         )),
     )
         .map(|(f, (arg1, arg2))| Expression::Fn2(f, Box::new(arg1), Box::new(arg2)))
         .parse_next(input)
+}
+
+pub(super) fn ctx_label(label: &'static str) -> StrContext {
+    StrContext::Label(label)
+}
+pub(super) fn ctx_descr(description: &'static str) -> StrContext {
+    StrContext::Expected(StrContextValue::Description(description))
+}
+pub(super) fn ctx_char(literal: char) -> StrContext {
+    StrContext::Expected(StrContextValue::CharLiteral(literal))
+}
+pub(super) fn ctx_str(literal: &'static str) -> StrContext {
+    StrContext::Expected(StrContextValue::StringLiteral(literal))
 }
 
 #[cfg(test)]

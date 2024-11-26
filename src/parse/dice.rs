@@ -1,12 +1,12 @@
 use winnow::{
     ascii::{dec_int, dec_uint, multispace0},
-    combinator::{alt, cut_err, delimited, opt, preceded, repeat, separated_pair},
+    combinator::{alt, cut_err, delimited, fail, opt, preceded, repeat, separated_pair},
     PResult, Parser,
 };
 
 use super::{
-    parse_fn1, parse_fn2, parse_parens, ComparePoint, ExplodingKind, Expression, KeepKind,
-    Modifier, SortKind,
+    ctx_descr, ctx_label, ctx_str, parse_fn1, parse_fn2, parse_parens, ComparePoint, ExplodingKind,
+    Expression, KeepKind, Modifier, SortKind,
 };
 
 impl Modifier {
@@ -72,7 +72,7 @@ pub fn parse_dice_standard(input: &mut &str) -> PResult<Expression> {
     separated_pair(
         opt(parse_dice_quantity),
         'd',
-        cut_err((parse_dice_sides, repeat(0.., parse_modifier))),
+        (cut_err(parse_dice_sides), repeat(0.., parse_modifier)),
     )
     .map(|(qty, (sides, modifiers))| {
         Expression::DiceStandard(qty.map(Box::new), Box::new(sides), modifiers)
@@ -84,7 +84,7 @@ pub fn parse_dice_fudge1(input: &mut &str) -> PResult<Expression> {
     separated_pair(
         opt(parse_dice_quantity),
         "dF.1",
-        cut_err(repeat(0.., parse_modifier)),
+        repeat(0.., parse_modifier),
     )
     .map(|(qty, modifiers)| Expression::DiceFudge1(qty.map(Box::new), modifiers))
     .parse_next(input)
@@ -94,20 +94,16 @@ pub fn parse_dice_fudge2(input: &mut &str) -> PResult<Expression> {
     separated_pair(
         opt(parse_dice_quantity),
         alt(("dF.2", "dF")),
-        cut_err(repeat(0.., parse_modifier)),
+        repeat(0.., parse_modifier),
     )
     .map(|(qty, modifiers)| Expression::DiceFudge2(qty.map(Box::new), modifiers))
     .parse_next(input)
 }
 
 pub fn parse_dice_percentile(input: &mut &str) -> PResult<Expression> {
-    separated_pair(
-        opt(parse_dice_quantity),
-        "d%",
-        cut_err(repeat(0.., parse_modifier)),
-    )
-    .map(|(qty, modifiers)| Expression::DicePercentile(qty.map(Box::new), modifiers))
-    .parse_next(input)
+    separated_pair(opt(parse_dice_quantity), "d%", repeat(0.., parse_modifier))
+        .map(|(qty, modifiers)| Expression::DicePercentile(qty.map(Box::new), modifiers))
+        .parse_next(input)
 }
 
 fn parse_dice_quantity(input: &mut &str) -> PResult<Expression> {
@@ -132,6 +128,10 @@ fn parse_dice_sides(input: &mut &str) -> PResult<Expression> {
             parse_fn1,
             parse_parens,
             dec_uint.map(|int: u32| Expression::Value(int as f64)),
+            fail.context(ctx_label("dice sides"))
+                .context(ctx_descr("Function with 1 or 2 arguments"))
+                .context(ctx_descr("Parens: (..)"))
+                .context(ctx_descr("Positive integer")),
         )),
         multispace0,
     )
@@ -140,23 +140,52 @@ fn parse_dice_sides(input: &mut &str) -> PResult<Expression> {
 
 pub fn parse_modifier(input: &mut &str) -> PResult<Modifier> {
     alt((
-        preceded("min", cut_err(dec_int)).map(Modifier::Min),
-        preceded("max", cut_err(dec_int)).map(Modifier::Max),
+        preceded("min", cut_err(dec_int))
+            .context(ctx_label("min modifier"))
+            .context(ctx_descr("a positive integer"))
+            .map(Modifier::Min),
+        preceded("max", cut_err(dec_int))
+            .context(ctx_label("min modifier"))
+            .context(ctx_descr("a positive integer"))
+            .map(Modifier::Max),
         // TODO: Shouldn't cut_err because the ! could be a ComparePoint::NotEqual,
         // I might decide to not support != because it's confusing, it's standard syntax
         // in most common syntax languages but in this case you need to know how it
         // interacts with different modifiers
-        preceded("!", cut_err(exploding)),
+        preceded("!", cut_err(exploding))
+            .context(ctx_label("exploding modifier"))
+            .context(ctx_str("!"))
+            .context(ctx_str("!!"))
+            .context(ctx_str("!p"))
+            .context(ctx_str("!!p")),
         preceded("ro", opt(compare_point)).map(|cp| Modifier::ReRoll(true, cp)),
         preceded("r", opt(compare_point)).map(|cp| Modifier::ReRoll(false, cp)),
         preceded("uo", opt(compare_point)).map(|cp| Modifier::Unique(true, cp)),
         preceded("u", opt(compare_point)).map(|cp| Modifier::Unique(false, cp)),
-        preceded("kl", cut_err(dec_uint)).map(|n| Modifier::Keep(KeepKind::Lowest, n)),
-        preceded("kh", cut_err(dec_uint)).map(|n| Modifier::Keep(KeepKind::Highest, n)),
-        preceded('k', cut_err(dec_uint)).map(|n| Modifier::Keep(KeepKind::Highest, n)),
-        preceded("dh", cut_err(dec_uint)).map(|n| Modifier::Drop(KeepKind::Highest, n)),
-        preceded("dl", cut_err(dec_uint)).map(|n| Modifier::Drop(KeepKind::Lowest, n)),
-        preceded('d', cut_err(dec_uint)).map(|n| Modifier::Drop(KeepKind::Lowest, n)),
+        preceded("kl", cut_err(dec_uint))
+            .context(ctx_label("keep lowest modifier"))
+            .context(ctx_descr("a positive integer"))
+            .map(|n| Modifier::Keep(KeepKind::Lowest, n)),
+        preceded("kh", cut_err(dec_uint))
+            .context(ctx_label("keep highest modifier"))
+            .context(ctx_descr("a positive integer"))
+            .map(|n| Modifier::Keep(KeepKind::Highest, n)),
+        preceded('k', cut_err(dec_uint))
+            .context(ctx_label("keep highest modifier"))
+            .context(ctx_descr("a positive integer"))
+            .map(|n| Modifier::Keep(KeepKind::Highest, n)),
+        preceded("dh", cut_err(dec_uint))
+            .context(ctx_label("drop highest modifier"))
+            .context(ctx_descr("a positive integer"))
+            .map(|n| Modifier::Drop(KeepKind::Highest, n)),
+        preceded("dl", cut_err(dec_uint))
+            .context(ctx_label("drop lowest modifier"))
+            .context(ctx_descr("a positive integer"))
+            .map(|n| Modifier::Drop(KeepKind::Lowest, n)),
+        preceded('d', cut_err(dec_uint))
+            .context(ctx_label("drop lowest modifier"))
+            .context(ctx_descr("a positive integer"))
+            .map(|n| Modifier::Drop(KeepKind::Lowest, n)),
         preceded("cs", opt(compare_point)).map(Modifier::CriticalSuccess),
         preceded("cf", opt(compare_point)).map(Modifier::CriticalFailure),
         "sa".map(|_| Modifier::Sort(SortKind::Ascending)),
@@ -202,15 +231,40 @@ pub fn parse_group_modifier(input: &mut &str) -> PResult<Modifier> {
 
 fn compare_point(input: &mut &str) -> PResult<ComparePoint> {
     alt((
-        preceded("<=", cut_err(dec_int)).map(|i: i32| ComparePoint::LessThanOrEqual(f64::from(i))),
+        preceded("<=", cut_err(dec_int))
+            .context(ctx_label("less than or equal compare point"))
+            .context(ctx_descr("an integer"))
+            .map(|i: i32| ComparePoint::LessThanOrEqual(f64::from(i))),
         preceded(">=", cut_err(dec_int))
+            .context(ctx_label("greater than or equal compare point"))
+            .context(ctx_descr("an integer"))
             .map(|i: i32| ComparePoint::GreaterThanOrEqual(f64::from(i))),
         // TODO: Missing != (not equal), it should work with every modifier
         // except the exploding ones, those need to use <>
-        preceded("<>", cut_err(dec_int)).map(|i: i32| ComparePoint::NotEqual(f64::from(i))),
-        preceded('=', cut_err(dec_int)).map(|i: i32| ComparePoint::Equal(f64::from(i))),
-        preceded('<', cut_err(dec_int)).map(|i: i32| ComparePoint::LessThan(f64::from(i))),
-        preceded('>', cut_err(dec_int)).map(|i: i32| ComparePoint::GreaterThan(f64::from(i))),
+        preceded("<>", cut_err(dec_int))
+            .context(ctx_label("not equal compare point"))
+            .context(ctx_descr("an integer"))
+            .map(|i: i32| ComparePoint::NotEqual(f64::from(i))),
+        preceded('=', cut_err(dec_int))
+            .context(ctx_label("equals compare point"))
+            .context(ctx_descr("an integer"))
+            .map(|i: i32| ComparePoint::Equal(f64::from(i))),
+        preceded('<', cut_err(dec_int))
+            .context(ctx_label("less than compare point"))
+            .context(ctx_descr("an integer"))
+            .map(|i: i32| ComparePoint::LessThan(f64::from(i))),
+        preceded('>', cut_err(dec_int))
+            .context(ctx_label("greater than compare point"))
+            .context(ctx_descr("an integer"))
+            .map(|i: i32| ComparePoint::GreaterThan(f64::from(i))),
+        fail.context(ctx_label("compare point"))
+            .context(ctx_str("<"))
+            .context(ctx_str("<="))
+            .context(ctx_str("="))
+            .context(ctx_str("<>"))
+            .context(ctx_str(">="))
+            .context(ctx_descr("or `>`"))
+            .context(ctx_descr("and an integer")),
     ))
     .parse_next(input)
 }
