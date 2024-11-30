@@ -46,12 +46,18 @@ impl Dice {
             DiceKind::Fudge2 => 1,
         }
     }
+    fn max_value_f64(&self) -> f64 {
+        self.max_value() as f64
+    }
     pub fn min_value(&self) -> i32 {
         match self.kind {
             DiceKind::Standard(_) => 1,
             DiceKind::Fudge1 => -1,
             DiceKind::Fudge2 => -1,
         }
+    }
+    fn min_value_f64(&self) -> f64 {
+        self.min_value() as f64
     }
 
     fn roll_amount(&self, amount: usize, rng: &mut impl Rng) -> RollOutput {
@@ -161,8 +167,13 @@ fn apply_exploding(
     compare_point: Option<ComparePoint>,
 ) {
     let should_explode: Box<dyn Fn(f64) -> bool> = match compare_point {
-        Some(cmp) => cmp.compare_fn(),
-        None => Box::new(|a| a == f64::from(dice.max_value())),
+        Some(cmp) => {
+            if !cmp.can_dice_pass(dice) {
+                return;
+            }
+            cmp.compare_fn()
+        }
+        None => Box::new(|a| a == dice.max_value_f64()),
     };
 
     match exploding_kind {
@@ -237,8 +248,13 @@ fn apply_reroll(
     compare_point: Option<ComparePoint>,
 ) {
     let should_reroll: Box<dyn Fn(f64) -> bool> = match compare_point {
-        Some(cmp) => cmp.compare_fn(),
-        None => Box::new(|a| a == f64::from(dice.min_value())),
+        Some(cmp) => {
+            if !cmp.can_dice_pass(dice) {
+                return;
+            }
+            cmp.compare_fn()
+        }
+        None => Box::new(|a| a == dice.min_value_f64()),
     };
 
     let (iterations, modifier_flag) = if once {
@@ -264,7 +280,12 @@ fn apply_unique(
     compare_point: Option<ComparePoint>,
 ) {
     let should_reroll: Box<dyn Fn(f64) -> bool> = match compare_point {
-        Some(cmp) => cmp.compare_fn(),
+        Some(cmp) => {
+            if !cmp.can_dice_pass(dice) {
+                return;
+            }
+            cmp.compare_fn()
+        }
         None => Box::new(|_| true),
     };
 
@@ -313,7 +334,7 @@ fn apply_target_failure(rolls: &mut [Roll], success_cmp: ComparePoint, failure_c
 fn apply_critical_success(dice: &Dice, rolls: &mut [Roll], compare_point: Option<ComparePoint>) {
     let is_critical_success = match compare_point {
         Some(cmp) => cmp.compare_fn(),
-        None => Box::new(|a| a == f64::from(dice.max_value())),
+        None => Box::new(|a| a == dice.max_value_f64()),
     };
 
     for roll in rolls.iter_mut() {
@@ -326,7 +347,7 @@ fn apply_critical_success(dice: &Dice, rolls: &mut [Roll], compare_point: Option
 fn apply_critical_failure(dice: &Dice, rolls: &mut [Roll], compare_point: Option<ComparePoint>) {
     let is_critical_fail = match compare_point {
         Some(cmp) => cmp.compare_fn(),
-        None => Box::new(|a| a == f64::from(dice.min_value())),
+        None => Box::new(|a| a == dice.min_value_f64()),
     };
 
     for roll in rolls.iter_mut() {
@@ -387,6 +408,17 @@ impl ComparePoint {
             ComparePoint::GreaterThan(n) => Box::new(move |a| a > n),
             ComparePoint::LessThanOrEqual(n) => Box::new(move |a| a <= n),
             ComparePoint::GreaterThanOrEqual(n) => Box::new(move |a| a >= n),
+        }
+    }
+
+    pub fn can_dice_pass(self, dice: &Dice) -> bool {
+        match self {
+            ComparePoint::Equal(n) => dice.min_value_f64() <= n && n <= dice.max_value_f64(),
+            ComparePoint::NotEqual(n) => !(dice.min_value_f64() <= n && n <= dice.max_value_f64()),
+            ComparePoint::LessThan(n) => n > dice.min_value_f64(),
+            ComparePoint::GreaterThan(n) => n < dice.max_value_f64(),
+            ComparePoint::LessThanOrEqual(n) => n >= dice.min_value_f64(),
+            ComparePoint::GreaterThanOrEqual(n) => n <= dice.max_value_f64(),
         }
     }
 }
@@ -1139,5 +1171,70 @@ mod tests {
         apply_sort(&mut rolls, SortKind::Descending);
 
         assert_eq!(values(&rolls), [4, 3, 2, 1]);
+    }
+
+    #[test]
+    fn test_dice_can_pass_compare_point() {
+        use ComparePoint::*;
+        use DiceKind::*;
+
+        let inputs = [
+            // Equal
+            (Standard(100), Equal(0.), false),
+            (Standard(100), Equal(101.), false),
+            (Standard(100), Equal(1.), true),
+            (Standard(100), Equal(100.), true),
+            // Not Equal
+            (Standard(100), NotEqual(0.), true),
+            (Standard(100), NotEqual(101.), true),
+            (Standard(100), NotEqual(1.), false),
+            (Standard(100), NotEqual(100.), false),
+            // Less than
+            (Standard(100), LessThan(1.), false),
+            (Standard(100), LessThan(2.), true),
+            (Standard(100), LessThan(101.), true),
+            (Fudge1, LessThan(0.), true),
+            (Fudge2, LessThan(0.), true),
+            (Fudge1, LessThan(-1.), false),
+            (Fudge2, LessThan(-1.), false),
+            // Greater than
+            (Standard(100), GreaterThan(1.), true),
+            (Standard(100), GreaterThan(100.), false),
+            (Standard(100), GreaterThan(101.), false),
+            (Fudge1, GreaterThan(0.), true),
+            (Fudge2, GreaterThan(0.), true),
+            (Fudge1, GreaterThan(-1.), true),
+            (Fudge2, GreaterThan(-1.), true),
+            (Fudge1, GreaterThan(2.), false),
+            (Fudge2, GreaterThan(2.), false),
+            // Less than or equal
+            (Standard(100), LessThanOrEqual(1.), true),
+            (Standard(100), LessThanOrEqual(2.), true),
+            (Standard(100), LessThanOrEqual(101.), true),
+            (Fudge1, LessThanOrEqual(0.), true),
+            (Fudge2, LessThanOrEqual(0.), true),
+            (Fudge1, LessThanOrEqual(-1.), true),
+            (Fudge2, LessThanOrEqual(-1.), true),
+            // Greater than or equal
+            (Standard(100), GreaterThanOrEqual(1.), true),
+            (Standard(100), GreaterThanOrEqual(100.), true),
+            (Standard(100), GreaterThanOrEqual(101.), false),
+            (Fudge1, GreaterThanOrEqual(0.), true),
+            (Fudge2, GreaterThanOrEqual(0.), true),
+            (Fudge1, GreaterThanOrEqual(1.), true),
+            (Fudge2, GreaterThanOrEqual(1.), true),
+            (Fudge1, GreaterThanOrEqual(2.), false),
+            (Fudge2, GreaterThanOrEqual(2.), false),
+        ];
+
+        for (dice_kind, compare_point, expected) in inputs {
+            let dice = Dice::new(1, dice_kind, &[]);
+            let result = compare_point.can_dice_pass(&dice);
+
+            assert_eq!(
+                result, expected,
+                "{dice_kind:?} {compare_point:?} {expected}"
+            );
+        }
     }
 }
