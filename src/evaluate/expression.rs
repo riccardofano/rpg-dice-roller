@@ -13,22 +13,22 @@ impl Expression {
             Expression::Value(float) => RolledExpression::Value(float),
             Expression::DiceFudge1(qty, mods) => {
                 let dice = dice_from_expression(qty.map(|q| *q), DiceKind::Fudge1, mods, rng);
-                RolledExpression::DiceRoll(dice.roll_all(rng))
+                RolledExpression::DiceRoll(dice.roll_all_with(rng))
             }
             Expression::DiceFudge2(qty, mods) => {
                 let dice = dice_from_expression(qty.map(|q| *q), DiceKind::Fudge2, mods, rng);
-                RolledExpression::DiceRoll(dice.roll_all(rng))
+                RolledExpression::DiceRoll(dice.roll_all_with(rng))
             }
             Expression::DicePercentile(qty, mods) => {
                 let dice =
                     dice_from_expression(qty.map(|q| *q), DiceKind::Standard(100), mods, rng);
-                RolledExpression::DiceRoll(dice.roll_all(rng))
+                RolledExpression::DiceRoll(dice.roll_all_with(rng))
             }
             Expression::DiceStandard(qty, sides, mods) => {
                 let sides = sides.roll(rng).value().round() as u32;
                 let dice =
                     dice_from_expression(qty.map(|q| *q), DiceKind::Standard(sides), mods, rng);
-                RolledExpression::DiceRoll(dice.roll_all(rng))
+                RolledExpression::DiceRoll(dice.roll_all_with(rng))
             }
             Expression::Parens(expr) => expr.roll(rng),
             Expression::Group(expressions, modifiers) => {

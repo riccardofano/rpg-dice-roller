@@ -19,7 +19,7 @@ pub fn benchmark_rolling(c: &mut Criterion) {
         b.iter(|| {
             let dice = Dice::new(999, DiceKind::Standard(444), &[]);
             let mut rng = StdRng::seed_from_u64(1);
-            dice.roll_all(&mut rng);
+            dice.roll_all_with(&mut rng);
         });
     });
 
@@ -31,7 +31,7 @@ pub fn benchmark_rolling(c: &mut Criterion) {
                 &[Modifier::ReRoll(false, Some(ComparePoint::Equal(101.0)))],
             );
             let mut rng = StdRng::seed_from_u64(1);
-            dice.roll_all(&mut rng);
+            dice.roll_all_with(&mut rng);
         });
     });
 }

@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::{thread_rng, Rng};
 
 use super::roll::{ModifierFlags, Roll, RollOutput, RollOutputKind};
 use crate::parse::{ComparePoint, Dice, DiceKind, ExplodingKind, KeepKind, Modifier, SortKind};
@@ -94,12 +94,26 @@ impl Dice {
     }
 
     /// Roll the full quantity of the dice.
-    pub fn roll_all(&self, rng: &mut impl Rng) -> RollOutput {
+    /// Uses rand::thread_rng(), if you want to choose the rng yourself use `roll_all_with()`
+    pub fn roll_all(&self) -> RollOutput {
+        self.roll_amount(self.quantity as usize, &mut thread_rng())
+    }
+
+    /// Roll the full quantity of the dice with the rng specified.
+    /// If you don't care about which rng to use you can use `roll_all` instead.
+    pub fn roll_all_with(&self, rng: &mut impl Rng) -> RollOutput {
         self.roll_amount(self.quantity as usize, rng)
     }
 
     /// Roll the dice only once.
-    pub fn roll_once(&self, rng: &mut impl Rng) -> RollOutput {
+    /// Uses rand::thread_rng(), if you want to choose the rng yourself use `roll_once_with()`
+    pub fn roll_once(&self) -> RollOutput {
+        self.roll_amount(1, &mut thread_rng())
+    }
+
+    /// Roll the dice only once with the rng specified.
+    /// If you don't care about which rng to use you can use `roll_once` instead.
+    pub fn roll_once_with(&self, rng: &mut impl Rng) -> RollOutput {
         self.roll_amount(1, rng)
     }
 
@@ -461,7 +475,7 @@ mod tests {
     #[test]
     fn test_rolling() {
         let dice = five_d6(vec![Modifier::Min(3), Modifier::Keep(KeepKind::Highest, 2)]);
-        let rolls = dice.roll_all(&mut test_rng());
+        let rolls = dice.roll_all_with(&mut test_rng());
 
         assert_eq!(to_notations(&rolls.rolls), "[5, 6, 5d, 5d, 3^d]");
     }
