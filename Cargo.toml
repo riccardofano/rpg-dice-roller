@@ -1,7 +1,14 @@
 [package]
 name = "rpg-dice-roller"
+description = "A crate to roll dice with modifiers and apply expressions to them."
+authors = ["Riccardo Fano"]
 version = "0.1.1"
 edition = "2021"
+repository = "https://github.com/riccardofano/rpg-dice-roller"
+readme = "README.md"
+license = "MIT"
+license-file = "LICENSE"
+keywords = ["dice", "dice-roller", "roll", "rpg", "D&D"]
 
 [dependencies]
 rand = "0.8.5"
