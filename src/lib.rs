@@ -1,3 +1,32 @@
+//! Roll dice with modifiers and apply expressions to them.
+//!
+//! ```rust
+//! # use rpg_dice_roller::{roll, roll_with, Dice, DiceKind, Modifier};
+//! # use rand::rngs::StdRng;
+//! # use rand::SeedableRng;
+//! #
+//! # fn main() -> Result<(), String> {
+//! // Roll 3 d20, make the minimum value 5, keep the lowest 2 rolls.
+//! let rolled = roll("3d20min5kl2")?;
+//! println!("{rolled} = {}", rolled.value()); // [6, 5^, 17d] = 11
+//!
+//! // Use a custom Rng that implements the rand::Rng trait
+//! let mut rng = StdRng::seed_from_u64(1);
+//! let rolled = roll_with("3d200", &mut rng)?;
+//! println!("{rolled} = {}", rolled.value()); // [165, 195, 160] = 520
+//!
+//! // Create Dice directly without parsing
+//! let dice = Dice::new(5, DiceKind::Standard(8), &[Modifier::Min(5)]);
+//! let rolled = dice.roll_all();
+//! println!("{rolled} = {}", rolled.value()); // [8, 6, 5^, 8, 5] = 32
+//!
+//! let rolled = dice.roll_once();
+//! println!("{rolled} = {}", rolled.value()); // [8] = 8
+//!
+//! # Ok(())
+//! # }
+//! ```
+
 mod evaluate;
 mod parse;
 

@@ -6,7 +6,6 @@ version = "0.1.1"
 edition = "2021"
 repository = "https://github.com/riccardofano/rpg-dice-roller"
 readme = "README.md"
-license = "MIT"
 license-file = "LICENSE"
 keywords = ["dice", "dice-roller", "roll", "rpg", "dungeons-and-dragons"]
 
