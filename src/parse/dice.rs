@@ -58,7 +58,7 @@ impl Modifier {
 
         let first_post_roll_modifier = modifiers
             .iter()
-            .position(|m| m.discriminant() >= Modifier::LAST_ROLL_MODIFIER)
+            .position(|m| m.discriminant() > Modifier::LAST_ROLL_MODIFIER)
             .unwrap_or(modifiers.len());
 
         modifiers.split_at(first_post_roll_modifier)
