@@ -276,6 +276,7 @@ fn apply_reroll(
     } else {
         (MAX_ITERATIONS, ModifierFlags::ReRoll)
     };
+
     for _ in 0..iterations {
         if !should_reroll(rolls_info.current.value.into()) {
             break;
@@ -428,7 +429,7 @@ impl ComparePoint {
     pub fn can_dice_pass(self, dice: &Dice) -> bool {
         match self {
             ComparePoint::Equal(n) => dice.min_value_f64() <= n && n <= dice.max_value_f64(),
-            ComparePoint::NotEqual(n) => !(dice.min_value_f64() <= n && n <= dice.max_value_f64()),
+            ComparePoint::NotEqual(n) => dice.min_value_f64() != n && dice.max_value_f64() != n,
             ComparePoint::LessThan(n) => n > dice.min_value_f64(),
             ComparePoint::GreaterThan(n) => n < dice.max_value_f64(),
             ComparePoint::LessThanOrEqual(n) => n >= dice.min_value_f64(),
