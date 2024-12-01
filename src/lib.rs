@@ -2,7 +2,9 @@ mod evaluate;
 mod parse;
 
 pub use evaluate::expression::RolledExpression;
-pub use parse::{ComparePoint, Dice, DiceKind, Expression, KeepKind, MathFn1, MathFn2, Modifier};
+pub use parse::{
+    ComparePoint, Dice, DiceKind, ExplodingKind, Expression, KeepKind, MathFn1, MathFn2, Modifier,
+};
 
 /// Parses the notation returning the parsed abstract syntax tree without
 /// rolling the dice.
