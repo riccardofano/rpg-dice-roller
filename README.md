@@ -1,64 +1,55 @@
-rpg-dice-roller
-==
+# rpg-dice-roller
 
 `rpg-dice-roller` allows you to simulate dice rolls with modifiers and mathematical expressions.\
 This crate is inspired by and based on the popular JavaScript library [rpg-dice-roller](https://github.com/dice-roller/rpg-dice-roller), please check out their [wonderful documentation](https://dice-roller.github.io/documentation/guide/) for more details on the functionality provided by the library.
 
 ## Installation
 ```
-cargo add rpg-dice-roller // TODO
+cargo add rpg-dice-roller
 ```
 
-## Supported modifiers
-Modifiers are special notations that appear after a dice or a dice group, and add special properties to them.
+## Example Usage
+```rust
+use rpg-dice-roller::roll;
 
-### Dice modifiers
-Dice modifiers will be applied in the order of the list below even if they were written in a different order in the input string.\
-If more than one of the same modifier appears in the input string, the last modifier is the one that will be applied.
+// Roll 4 d10.
+let rolled = roll("4d10")?;
+println!("{rolled} = {}", rolled.value()); // [3, 2, 3, 3] = 11
 
-- **Min** `min{amount}`\
-  update the roll value to `amount` if it was **below** that value.
-- **Max** `max{amount}`\
-  update the roll value to `amount` if it was **above** that value.
-- **Exploding** (one of:)\
-  The dice explodes whenever the value passed the compare point or it's the highest value on the dice.\
-  The dice can explode more than once.
-  - **Standard exploding** `!` or `!{compare_point}`\
-    rolls an additional dice
-  - **Penetrating** `!p` or `!p{compare_point}`\
-    rolls an additional dice but reduces its value by 1
-  - **Compounding** `!!` or `!!{compare_point}`\
-    rolls an additional dice and adds its value to the previous roll
-  - **Penetrating Compounding** `!!p` or `!!p{compare_point}`\
-    rolls an additional dice, reduces its value by 1 and adds its value to the previous roll
-- **ReRoll** `r` or `r{compare_point}` / **Reroll once** `ro` or `ro{compare_point}`\
-  rerolls the dice if it was the lowest number on the dice or it hit the compare point
-- **Unique** `u` or `u{compare_point}` / **Unique once** `uo` or `uo{compare_point}`\
-  rerolls the dice if the value was previously seen before
-- **TargetSuccess** `{compare_point}`\
-  the final roll value sum will be now determined by the amount of rolls that passed the compare point, +1 for every roll.
-- **TargetFailure** `{success_compare_point}f{failure_compare_point}`\
-  the final roll value sum will be now determined by the amount of rolls that passed or failed the compare points, +1 for every success roll, -1 for every fail roll.
-- **CriticalSuccess** `cs` or `cs{compare_point}`\
-  Purely cosmetic, adds the `**` notation if the roll was the highest value on the dice or passed the compare point.
-- **CriticalFailure** `cf` or `cf{compare_point}`\
-  Purely cosmetic, adds the `__ notation if the roll was the lowest value on the dice or hit the compare point.
-- **Keep** `k{amount}`, `kh{amount}` or `kl{amount}`\
-  (defaults to keep highest)\
-  Drops every roll except the highest or lowest `{amount}`.
-- **Drop** `d{amount}`, `dh{amount}` or `dl{amount}`\
-  (defaults to drop lowest)\
-  Drops `{amount}` of lowest or highest rolls.
-- **Sort** `s`, `sa` or `sd`\
-  (defaults to sort ascending)
-  Sorts the roll values in ascending or descending order.
+// Roll 3 d20, make the minimum value 5, keep the lowest 2 rolls.
+let rolled = roll("3d20min5kl2")?;
+println!("{rolled} = {}", rolled.value()); // [6, 5^, 17d] = 11
 
-### Group modifiers
-Groups are comma separated expressions surrounded by {}.\
-The modifiers are used in the same way as with dice modifiers but there are fewer of them.
+// Roll a group of 3 expressions:
+// 3d100,
+// 3 fudge dice (d6s with 2 -1 sides, 2 +1 sides and 2 blank ones) and add 5 to the result,
+// 1 d50 and evalate its result to the power of 2
+// Count the number of expressions whose value was greater than 50
+let rolled = roll("{3d%, 3dF.2 + 5, pow(d50, 2)}>50")?;
+println!("{rolled} = {}", rolled.value()); // {[68, 8, 31]*, [1, 1, 1] + 5, pow([14], 2)*} = 2
+```
+
+## Supported Die kinds
+- Any dice until u32::MAX number of sides
+- Fudge/Fate die with 4 blank sides, 1 plus side and 1 minus side.
+- Fudge/Fate die with 2 blank sides, 2 plus sides and 2 minus sides.
+
+## Supported Modifiers
+- Min/Max
+- Exploding/Penetrating/Compounding/PenetratingCompounding
+- Reroll/Reroll once
+- Unique/Unique once
+- TargetSuccess/Failure
+- CriticalSuccess/Failure
 - Keep/Drop
-- Target Success/Failure
 - Sort
 
-## Compare points
-Compare point all start with a comparison sign `=`, `<>` (not equal), `<`, `>`, `<=`, `>=` and are followed by a number or an expression.
+## Supported expressions
+- Addition `+`, subtraction `-`, multiplication `*`, division `/`, remainder `%`, power `^` or `**`.
+- `abs()`, `floor()`, `ceil()`, `round()`, `sign()`, `sqrt()`, `log(E)`, `exp()`, `sin()`, `cos()`, `tan()`.
+- `min(_, _)`, `max(_, _)`, `pow(_, _)`.
+- operation precedence between operators and parethesis.
+- Groups `{}` will sum (or apply target success/failure if modifiers were applied) to the comma separated expressions inside.
+
+## Rng
+This crates uses `rand::thread_rng()` by default but provides `_with` functions (`roll_with`, `Dice::roll_once_with()`, etc.) so you can use anything the `rand::Rng` trait with them.

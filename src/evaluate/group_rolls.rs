@@ -18,10 +18,12 @@ pub fn apply_group_modifiers(
     for modifier in modifiers {
         match modifier {
             Modifier::TargetSuccess(compare_point) => {
-                apply_group_target_success(&mut output, *compare_point)
+                apply_group_target_success(&mut output, *compare_point);
+                output.kind = RollOutputKind::TargetSuccess;
             }
             Modifier::TargetFailure(success_cmp, failure_cmp) => {
-                apply_group_target_failure(&mut output, *success_cmp, *failure_cmp)
+                apply_group_target_failure(&mut output, *success_cmp, *failure_cmp);
+                output.kind = RollOutputKind::TargetFailure;
             }
             Modifier::Keep(keep_kind, amount) => apply_group_keep(&mut output, *keep_kind, *amount),
             Modifier::Drop(keep_kind, amount) => apply_group_drop(&mut output, *keep_kind, *amount),
@@ -29,6 +31,7 @@ pub fn apply_group_modifiers(
             m => unreachable!("{m:?} modifier is not allowed for groups"),
         }
     }
+
     output
 }
 
