@@ -2,7 +2,7 @@
 name = "rpg-dice-roller"
 description = "A crate to roll dice with modifiers and apply expressions to them."
 authors = ["Riccardo Fano"]
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 repository = "https://github.com/riccardofano/rpg-dice-roller"
 readme = "README.md"
