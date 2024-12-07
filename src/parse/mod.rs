@@ -15,7 +15,7 @@ pub struct Dice {
 pub enum DiceKind {
     /// `d{sides}` or `d%` as a shortcut for `d100`\
     /// Die with specified number of sides.
-    Standard(u32),
+    Standard(i32),
     /// `dF.1`\
     /// Fudge/Fate die with 4 blanks, 1 plus, 1 minus.
     Fudge1,

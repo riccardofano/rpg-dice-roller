@@ -25,7 +25,7 @@ impl Expression {
                 RolledExpression::DiceRoll(dice.roll_all_with(rng))
             }
             Expression::DiceStandard(qty, sides, mods) => {
-                let sides = sides.roll(rng).value().round() as u32;
+                let sides = sides.roll(rng).value().round() as i32;
                 let dice =
                     dice_from_expression(qty.map(|q| *q), DiceKind::Standard(sides), mods, rng);
                 RolledExpression::DiceRoll(dice.roll_all_with(rng))

@@ -31,7 +31,7 @@ println!("{rolled} = {}", rolled.value()); // {[68, 8, 31]*, [1, 1, 1] + 5, pow(
 
 ## Supported Die kinds
 More details on the [dice kind documentation](https://docs.rs/rpg-dice-roller/latest/rpg_dice_roller/enum.DiceKind.html)
-- Any dice until u32::MAX number of sides
+- Any dice until i32::MAX number of sides
 - Fudge/Fate die with 4 blank sides, 1 plus side and 1 minus side.
 - Fudge/Fate die with 2 blank sides, 2 plus sides and 2 minus sides.
 
