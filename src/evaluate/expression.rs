@@ -25,7 +25,14 @@ impl Expression {
                 RolledExpression::DiceRoll(dice.roll_all_with(rng))
             }
             Expression::DiceStandard(qty, sides, mods) => {
+                // Max sides is i32::MAX
                 let sides = sides.roll(rng).value().round() as i32;
+
+                // Make sure sides aren't negative, not sure it makes sense for
+                // the minimum amount of sides to be 1, but I'd have to make
+                // sure that parsing also doesn't accept a 1 in that case.
+                let sides = sides.max(1);
+
                 let dice =
                     dice_from_expression(qty.map(|q| *q), DiceKind::Standard(sides), mods, rng);
                 RolledExpression::DiceRoll(dice.roll_all_with(rng))

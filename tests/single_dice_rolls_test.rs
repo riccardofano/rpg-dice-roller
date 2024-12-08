@@ -1,5 +1,7 @@
+use std::ops::Not;
+
 use rand::{rngs::StdRng, SeedableRng};
-use rpg_dice_roller::roll_with;
+use rpg_dice_roller::{parse, roll_with};
 
 fn test_rng() -> StdRng {
     StdRng::seed_from_u64(1)
@@ -295,4 +297,22 @@ fn test_sort_ascending() {
 #[test]
 fn test_sort_descending() {
     run("3d10k1d1sd", "[9, 5d, 3d]", 9.0);
+}
+
+#[test]
+fn test_negative_dice_sides() {
+    let result = parse("d-15");
+    assert!(result.is_err(), "{:?}", result);
+}
+
+#[test]
+fn test_negative_expression_sides() {
+    // Expressions leading to negative values are not evaluated until you try to roll dices.
+    // if a negative value is resolved it should be set to 1.
+
+    let result = parse("d(1 - 3)");
+    assert!(result.is_err().not(), "{:?}", result);
+
+    let rolled = result.unwrap().roll(&mut test_rng());
+    assert_eq!(rolled.value(), 1.0);
 }
