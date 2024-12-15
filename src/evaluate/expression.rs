@@ -25,7 +25,14 @@ impl Expression {
                 RolledExpression::DiceRoll(dice.roll_all_with(rng))
             }
             Expression::DiceStandard(qty, sides, mods) => {
-                let sides = sides.roll(rng).value().round() as u32;
+                // Max sides is i32::MAX
+                let sides = sides.roll(rng).value().round() as i32;
+
+                // Make sure sides aren't negative, not sure it makes sense for
+                // the minimum amount of sides to be 1, but I'd have to make
+                // sure that parsing also doesn't accept a 1 in that case.
+                let sides = sides.max(1);
+
                 let dice =
                     dice_from_expression(qty.map(|q| *q), DiceKind::Standard(sides), mods, rng);
                 RolledExpression::DiceRoll(dice.roll_all_with(rng))
@@ -226,5 +233,55 @@ impl std::fmt::Display for MathFn2 {
             MathFn2::Pow => "pow",
         };
         write!(f, "{str}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{parse::Operator, Expression::*};
+    use std::{f64::INFINITY, u64};
+
+    struct MaxValRng;
+
+    impl rand::RngCore for MaxValRng {
+        fn next_u32(&mut self) -> u32 {
+            self.next_u64() as u32
+        }
+
+        fn next_u64(&mut self) -> u64 {
+            u64::MAX
+        }
+
+        fn fill_bytes(&mut self, _dest: &mut [u8]) {
+            unimplemented!()
+        }
+
+        fn try_fill_bytes(&mut self, _dest: &mut [u8]) -> Result<(), rand::Error> {
+            unimplemented!();
+        }
+    }
+
+    #[test]
+    fn test_infinity_sides_dice_max_is_i32_max() {
+        let sides = Value(INFINITY);
+        let expression = DiceStandard(None, Box::new(sides), [].to_vec());
+        let output = expression.roll(&mut MaxValRng);
+        assert_eq!(output.value(), i32::MAX as f64);
+    }
+
+    #[test]
+    fn test_greater_than_i32_max_sides_dice_max_is_i32_max() {
+        let sides = Value(i32::MAX as f64 + 1.0);
+        let expression = DiceStandard(None, Box::new(sides), [].to_vec());
+        let output = expression.roll(&mut MaxValRng);
+        assert_eq!(output.value(), i32::MAX as f64);
+    }
+
+    #[test]
+    fn test_divide_by_zero_max_is_i32_max() {
+        let sides = Infix(Operator::Div, Box::new(Value(3.0)), Box::new(Value(0.0)));
+        let expression = DiceStandard(None, Box::new(sides), [].to_vec());
+        let output = expression.roll(&mut MaxValRng);
+        assert_eq!(output.value(), i32::MAX as f64);
     }
 }

@@ -1,8 +1,9 @@
 use winnow::{
-    ascii::{dec_int, dec_uint, multispace0},
+    ascii::{dec_int, dec_uint, digit0, multispace0},
     combinator::{
         alt, cut_err, delimited, fail, opt, preceded, repeat, separated_pair, terminated,
     },
+    token::one_of,
     PResult, Parser,
 };
 
@@ -111,12 +112,7 @@ pub fn parse_dice_percentile(input: &mut &str) -> PResult<Expression> {
 fn parse_dice_quantity(input: &mut &str) -> PResult<Expression> {
     delimited(
         multispace0,
-        alt((
-            parse_fn2,
-            parse_fn1,
-            parse_parens,
-            dec_uint.map(|i: u32| Expression::Value(i as f64)),
-        )),
+        alt((parse_fn2, parse_fn1, parse_parens, non_zero_u32)),
         multispace0,
     )
     .parse_next(input)
@@ -129,7 +125,7 @@ fn parse_dice_sides(input: &mut &str) -> PResult<Expression> {
             parse_fn2,
             parse_fn1,
             parse_parens,
-            dec_uint.map(|int: u32| Expression::Value(int as f64)),
+            non_zero_i32,
             fail.context(ctx_label("dice sides"))
                 .context(ctx_descr("Function with 1 or 2 arguments"))
                 .context(ctx_descr("Parens: (..)"))
@@ -138,6 +134,22 @@ fn parse_dice_sides(input: &mut &str) -> PResult<Expression> {
         multispace0,
     )
     .parse_next(input)
+}
+
+pub fn non_zero_u32(input: &mut &str) -> PResult<Expression> {
+    let num = (one_of('1'..='9'), digit0)
+        .take()
+        .verify_map(|s: &str| s.parse::<u32>().ok())
+        .parse_next(input)?;
+    Ok(Expression::Value(num as f64))
+}
+
+pub fn non_zero_i32(input: &mut &str) -> PResult<Expression> {
+    let num = (one_of('1'..='9'), digit0)
+        .take()
+        .verify_map(|s: &str| s.parse::<i32>().ok())
+        .parse_next(input)?;
+    Ok(Expression::Value(num as f64))
 }
 
 pub fn parse_modifier(input: &mut &str) -> PResult<Modifier> {
@@ -381,6 +393,18 @@ mod tests {
         assert!(qty.is_none());
         assert_eq!(*sides, Expression::Value(6.0));
         assert_eq!(mods, vec![]);
+    }
+
+    #[test]
+    fn test_zero_sides_dice() {
+        let result = Expression::parse("d0");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_zero_quantity_dices() {
+        let result = Expression::parse("0d6");
+        assert!(result.is_err());
     }
 
     #[test]

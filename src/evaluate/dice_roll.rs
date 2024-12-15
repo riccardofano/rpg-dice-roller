@@ -1,4 +1,4 @@
-use rand::{thread_rng, Rng};
+use rand::{seq::SliceRandom, thread_rng, Rng};
 
 use super::roll::{ModifierFlags, Roll, RollOutput, RollOutputKind};
 use crate::parse::{ComparePoint, Dice, DiceKind, ExplodingKind, KeepKind, Modifier, SortKind};
@@ -11,12 +11,16 @@ struct RollsInfo {
 }
 
 impl Dice {
+    const FUDGE1_VALUES: [i32; 6] = [-1, 0, 0, 0, 0, 1];
+    const FUDGE2_VALUES: [i32; 3] = [-1, 0, 1];
+
     /// Creates a new dice.
     /// The quantity will clamped between 1 and 999 if a number outside that range is passed in.
     /// The modifiers will be sorted in the order specified by the enum and only
     /// the last one of each variant will be applied.
     pub fn new(quantity: u32, kind: DiceKind, modifiers: &[Modifier]) -> Self {
         let quantity = quantity.clamp(1, 999);
+
         Self {
             quantity,
             kind,
@@ -32,7 +36,9 @@ impl Dice {
     }
     pub fn sides(&self) -> u32 {
         match self.kind {
-            DiceKind::Standard(sides) => sides,
+            DiceKind::Standard(sides) => sides
+                .try_into()
+                .expect("expected sides to be a positive number"),
             DiceKind::Fudge1 | DiceKind::Fudge2 => 6,
         }
     }
@@ -41,13 +47,13 @@ impl Dice {
     }
     pub fn max_value(&self) -> i32 {
         match self.kind {
-            DiceKind::Standard(sides) => sides as i32,
+            DiceKind::Standard(sides) => sides,
             DiceKind::Fudge1 => 1,
             DiceKind::Fudge2 => 1,
         }
     }
     fn max_value_f64(&self) -> f64 {
-        self.max_value() as f64
+        self.max_value().into()
     }
     pub fn min_value(&self) -> i32 {
         match self.kind {
@@ -57,12 +63,12 @@ impl Dice {
         }
     }
     fn min_value_f64(&self) -> f64 {
-        self.min_value() as f64
+        self.min_value().into()
     }
 
-    fn roll_amount(&self, amount: usize, rng: &mut impl Rng) -> RollOutput {
+    fn roll_amount(&self, amount: u32, rng: &mut impl Rng) -> RollOutput {
         let mut rolls_info = RollsInfo {
-            all: Vec::with_capacity(amount),
+            all: Vec::with_capacity(amount as usize),
             current: Roll::new(0),
         };
 
@@ -96,13 +102,13 @@ impl Dice {
     /// Roll the full quantity of the dice.
     /// Uses rand::thread_rng(), if you want to choose the rng yourself use `roll_all_with()`
     pub fn roll_all(&self) -> RollOutput {
-        self.roll_amount(self.quantity as usize, &mut thread_rng())
+        self.roll_amount(self.quantity, &mut thread_rng())
     }
 
     /// Roll the full quantity of the dice with the rng specified.
     /// If you don't care about which rng to use you can use `roll_all` instead.
     pub fn roll_all_with(&self, rng: &mut impl Rng) -> RollOutput {
-        self.roll_amount(self.quantity as usize, rng)
+        self.roll_amount(self.quantity, rng)
     }
 
     /// Roll the dice only once.
@@ -118,12 +124,10 @@ impl Dice {
     }
 
     fn roll_value(&self, rng: &mut impl Rng) -> i32 {
-        let random_value: f32 = rng.gen();
-
         match self.kind {
-            DiceKind::Standard(sides) => (random_value * sides as f32).ceil() as i32,
-            DiceKind::Fudge1 => [-1, 0, 0, 0, 0, 1][(random_value * 6_f32).floor() as usize],
-            DiceKind::Fudge2 => (random_value * 3_f32).floor() as i32 - 1,
+            DiceKind::Standard(sides) => rng.gen_range(1..=sides),
+            DiceKind::Fudge1 => *Self::FUDGE1_VALUES.choose(rng).unwrap(),
+            DiceKind::Fudge2 => *Self::FUDGE2_VALUES.choose(rng).unwrap(),
         }
     }
 }
@@ -459,7 +463,7 @@ mod tests {
     }
 
     // NOTE: First 20 rolls with rng seed set to 1
-    // [5, 6, 5, 5, 2, 3, 2, 2, 5, 2, 4, 6, 5, 3, 6, 5, 1, 4, 1, 3]
+    // [5, 2, 3, 2, 2, 5, 2, 4, 3, 5, 1, 4, 3, 4, 2, 3, 1, 6, 3, 2]
     // Keep in mind that you usually set a roll before those
 
     fn test_rng() -> StdRng {
@@ -473,12 +477,19 @@ mod tests {
         }
     }
 
+    // #[test]
+    // fn test_first_few_rolls() {
+    //     let dice = Dice::new(20, DiceKind::Standard(6), &[]);
+    //     let output = dice.roll_all_with(&mut test_rng());
+    //     todo!("{:?}", values(&output.rolls));
+    // }
+
     #[test]
     fn test_rolling() {
         let dice = five_d6(vec![Modifier::Min(3), Modifier::Keep(KeepKind::Highest, 2)]);
         let rolls = dice.roll_all_with(&mut test_rng());
 
-        assert_eq!(to_notations(&rolls.rolls), "[5, 6, 5d, 5d, 3^d]");
+        assert_eq!(to_notations(&rolls.rolls), "[5, 3^, 3d, 3^d, 3^d]");
     }
 
     #[test]
@@ -527,7 +538,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             ExplodingKind::Standard,
             None,
         );
@@ -546,12 +557,12 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             ExplodingKind::Standard,
             Some(ComparePoint::GreaterThan(4.0)),
         );
 
-        assert_eq!(to_notations(&rolls_info.all), "[6!, 5!, 6!, 5!, 5!]");
+        assert_eq!(to_notations(&rolls_info.all), "[6!, 5!]");
         assert_eq!(rolls_info.current.value, 2);
         assert!(!rolls_info
             .current
@@ -565,7 +576,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             ExplodingKind::Standard,
             Some(ComparePoint::GreaterThan(4.0)),
         );
@@ -583,7 +594,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             ExplodingKind::Penetrating,
             None,
         );
@@ -602,7 +613,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             ExplodingKind::Penetrating,
             Some(ComparePoint::GreaterThan(4.0)),
         );
@@ -621,7 +632,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             ExplodingKind::Penetrating,
             Some(ComparePoint::GreaterThan(4.0)),
         );
@@ -639,7 +650,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             ExplodingKind::Compounding,
             None,
         );
@@ -657,12 +668,12 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             ExplodingKind::Compounding,
             Some(ComparePoint::GreaterThan(4.0)),
         );
 
-        assert_eq!(rolls_info.current.value, 29);
+        assert_eq!(rolls_info.current.value, 13);
         assert!(rolls_info
             .current
             .was_modifier_applied(ModifierFlags::ExplodingCompounding as u8));
@@ -675,7 +686,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             ExplodingKind::Compounding,
             Some(ComparePoint::GreaterThan(4.0)),
         );
@@ -693,7 +704,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             ExplodingKind::PenetratingCompounding,
             None,
         );
@@ -711,12 +722,12 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             ExplodingKind::PenetratingCompounding,
             Some(ComparePoint::GreaterThan(3.0)),
         );
 
-        assert_eq!(rolls_info.current.value, 24);
+        assert_eq!(rolls_info.current.value, 11);
         assert!(rolls_info
             .current
             .was_modifier_applied(ModifierFlags::ExplodingPenetratingCompounding as u8));
@@ -729,7 +740,7 @@ mod tests {
         apply_exploding(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             ExplodingKind::PenetratingCompounding,
             Some(ComparePoint::LessThan(4.0)),
         );
@@ -747,7 +758,7 @@ mod tests {
         apply_reroll(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             false,
             None,
         );
@@ -765,7 +776,7 @@ mod tests {
         apply_reroll(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             false,
             Some(ComparePoint::LessThanOrEqual(5.0)),
         );
@@ -783,7 +794,7 @@ mod tests {
         apply_reroll(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             false,
             Some(ComparePoint::Equal(4.0)),
         );
@@ -801,7 +812,7 @@ mod tests {
         apply_reroll(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             true,
             None,
         );
@@ -819,7 +830,7 @@ mod tests {
         apply_reroll(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             true,
             Some(ComparePoint::LessThanOrEqual(5.0)),
         );
@@ -837,7 +848,7 @@ mod tests {
         apply_reroll(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             true,
             Some(ComparePoint::Equal(4.0)),
         );
@@ -859,7 +870,7 @@ mod tests {
         apply_unique(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             false,
             None,
         );
@@ -881,12 +892,12 @@ mod tests {
         apply_unique(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             false,
             Some(ComparePoint::Equal(5.0)),
         );
 
-        assert_eq!(rolls_info.current.value, 6);
+        assert_eq!(rolls_info.current.value, 2);
         assert!(rolls_info
             .current
             .was_modifier_applied(ModifierFlags::Unique as u8));
@@ -903,7 +914,7 @@ mod tests {
         apply_unique(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             false,
             Some(ComparePoint::Equal(6.0)),
         );
@@ -925,7 +936,7 @@ mod tests {
         apply_unique(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             false,
             Some(ComparePoint::Equal(5.0)),
         );
@@ -947,7 +958,7 @@ mod tests {
         apply_unique(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             true,
             None,
         );
@@ -969,7 +980,7 @@ mod tests {
         apply_unique(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             true,
             Some(ComparePoint::LessThanOrEqual(5.0)),
         );
@@ -987,7 +998,7 @@ mod tests {
         apply_unique(
             &five_d6(vec![]),
             &mut rolls_info,
-            &mut &mut test_rng(),
+            &mut test_rng(),
             true,
             Some(ComparePoint::Equal(4.0)),
         );
